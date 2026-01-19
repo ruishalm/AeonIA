@@ -59,7 +59,7 @@ import pygetwindow as gw
 #                               CONFIGURAÇÕES
 # ==============================================================================
 
-GROQ_KEY = "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"
+GROQ_KEY = nooogsk_zKy0gaRKJ2zGZsDeLONvWGdyb3FYNA5E3DtrpfWdYpGRl5zT7hYknooo
 
 CFG = {
     "mem": "memoria_aeon.json",
