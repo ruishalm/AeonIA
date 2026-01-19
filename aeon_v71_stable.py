@@ -52,7 +52,7 @@ from groq import Groq
 #                               CONFIGURAÇÕES
 # ==============================================================================
 
-GROQ_KEY = [no_key]
+XGROQ_KEY = [no_key]
 
 CFG = {
     "mem": "memoria_aeon.json",
