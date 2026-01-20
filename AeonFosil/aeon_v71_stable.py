@@ -25,9 +25,7 @@ def check_deps():
         "pygame": "pygame", "edge-tts": "edge_tts", "GPUtil": "GPUtil", 
         "ollama": "ollama", "packaging": "packaging", "Pillow": "PIL", 
         "SpeechRecognition": "speech_recognition", "pyautogui": "pyautogui", 
-        "pyaudio": "pyaudio", "psutil": "psutil", "groq": "groq",
-        "requests": "requests", "beautifulsoup4": "bs4", "googlesearch-python": "googlesearch",
-        "feedparser": "feedparser", "PyGetWindow": "pygetwindow"
+        "pyaudio": "pyaudio", "psutil": "psutil", "groq": "groq"
     }
     miss = [pip for pip, mod in DEPS.items() if import_safe(mod) is None]
     if miss:
@@ -49,23 +47,18 @@ import pyautogui
 import speech_recognition as sr
 import psutil
 from groq import Groq
-import requests
-from bs4 import BeautifulSoup
-from googlesearch import search
-import feedparser
-import pygetwindow as gw
 
 # ==============================================================================
 #                               CONFIGURAÇÕES
 # ==============================================================================
 
-XGROQ_KEY = [no_key]
+GROQ_KEY = "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"
 
 CFG = {
     "mem": "memoria_aeon.json",
     "sys": "aeon_system.json",
     "aud": "temp_audio.mp3",
-    "model_txt_cloud": "llama3-70b-8192",
+    "model_txt_cloud": "llama-3.3-70b-versatile",
     "model_vis_cloud": "llama-3.2-11b-vision-preview", # Único ativo atualmente
     "model_txt_local": "llama3.2",
     "model_vis_local": "moondream"
@@ -91,9 +84,6 @@ TRIGGERS = ["aeon", "aion", "iron", "filho", "assistente", "computador"]
 APP_REF = None
 PARAR_FALA = False
 RECALIBRAR_MIC = False
-CONVERSATION_MODE = False
-LAST_ACTIVITY_TIME = None
-DITADO_MODE = False
 
 # ==============================================================================
 #                     GESTOR DE INSTALAÇÃO & LIMPEZA
@@ -279,6 +269,7 @@ def falar(texto):
     try:
         asyncio.run(_edge_tts_save(clean, f_tmp))
         
+        pygame.mixer.init()
         pygame.mixer.music.load(f_tmp)
         pygame.mixer.music.play()
         
@@ -287,6 +278,7 @@ def falar(texto):
                 pygame.mixer.music.stop()
                 break
             time.sleep(0.1)
+        pygame.mixer.quit()
         
     except Exception as e: 
         if APP_REF: APP_REF.log_display(f"Audio Error: {e}")
@@ -359,27 +351,16 @@ def processar_comando(texto):
         except: falar("Erro.")
         return
 
-    # Lógica de Lembretes e Alarmes
-    lembrete_triggers = ["alarme", "timer", "lembrete", "me lembre de"]
-    if any(t in cmd for t in lembrete_triggers):
+    if "alarme" in cmd or "timer" in cmd:
         nums = {"um":1,"dois":2,"tres":3,"quatro":4,"cinco":5,"dez":10,"vinte":20,"trinta":30,"meia":30}
         for k,v in nums.items(): cmd = cmd.replace(k, str(v))
-        
         match = re.search(r'(\d+)\s*(segundo|minuto|hora)', cmd)
         if match:
             q, u = int(match.group(1)), match.group(2)
             dt = datetime.timedelta(seconds=q) if "seg" in u else datetime.timedelta(minutes=q) if "min" in u else datetime.timedelta(hours=q)
-            
-            # Extrai a mensagem do lembrete
-            mensagem = re.sub(r'em\s*(\d+)\s*(segundo|minuto|hora)s?', '', cmd)
-            for t in lembrete_triggers: mensagem = mensagem.replace(t, '')
-            mensagem = mensagem.strip()
-            if not mensagem: mensagem = "Seu tempo acabou!"
-            
-            if APP_REF: APP_REF.adicionar_alarme(dt, mensagem)
-            falar(f"Ok, lembrete definido para daqui a {q} {u}s.")
-        else: 
-            falar("Não consegui entender o tempo para o lembrete.")
+            if APP_REF: APP_REF.adicionar_alarme(dt)
+            falar(f"Alarme definido para {(datetime.datetime.now()+dt).strftime('%H:%M:%S')}")
+        else: falar("Tempo inválido.")
         return
 
     apps = SISTEMA.get_apps()
@@ -389,84 +370,6 @@ def processar_comando(texto):
             try: os.startfile(p)
             except: os.system(p)
             return
-
-    # Nova lógica de busca na web
-    search_triggers = ["pesquise por", "procure por", "o que é", "quem é", "quem foi"]
-    for trigger in search_triggers:
-        if cmd.startswith(trigger):
-            query = cmd.replace(trigger, "").strip()
-            falar(f"Pesquisando sobre {query}...")
-            contexto_web = web_search(query)
-            if "Ocorreu um erro" in contexto_web or "Não encontrei" in contexto_web:
-                falar(contexto_web)
-            else:
-                prompt_final = f"Com base no seguinte texto, responda de forma concisa à pergunta: '{query}'\n\nTexto: {contexto_web}"
-                resposta = CEREBRO.pensar(prompt_final, "")
-                adicionar_memoria(query, resposta)
-                falar(resposta)
-            return
-
-    # Lógica de Clima
-    clima_triggers = ["como está o tempo", "previsão do tempo"]
-    for trigger in clima_triggers:
-        if trigger in cmd:
-            cidade = cmd.replace(trigger, "").replace("em", "").strip()
-            falar("Verificando...")
-            resultado_clima = obter_clima(cidade)
-            falar(resultado_clima)
-            return
-
-    # Lógica de Notícias
-    noticias_triggers = ["quais as notícias", "me dê as manchetes", "manchetes de hoje"]
-    for trigger in noticias_triggers:
-        if trigger in cmd:
-            falar("Buscando as últimas notícias...")
-            resultado_noticias = obter_noticias()
-            falar(resultado_noticias)
-            return
-
-    # Lógica de Controle de Janelas
-    acoes_janela = {
-        "minimize": "minimize", "minimizar": "minimize",
-        "maximize": "maximize", "maximizar": "maximize",
-        "restore": "restore", "restaurar": "restore",
-        "close": "close", "feche": "close", "fechar": "close",
-        "activate": "activate", "alterne para": "activate", "foco em": "activate"
-    }
-    for palavra, acao in acoes_janela.items():
-        if palavra in cmd:
-            partes = cmd.split(palavra)
-            titulo = partes[1].strip() if len(partes) > 1 and partes[1].strip() else None
-            
-            # Evita confundir com "fechar o programa"
-            if acao == 'close' and not titulo and 'janela' not in cmd:
-                continue
-
-            resultado = controlar_janela(acao, titulo)
-            falar(resultado)
-            return
-
-    # Lógica de Resumo de URL
-    if "http:" in cmd or "www." in cmd:
-        url = re.search(r'(https?://[^\s]+)', cmd).group(0)
-        if url:
-            falar(f"Analisando o conteúdo de {url.split('//')[1].split('/')[0]}...")
-            contexto_web = web_search(url)
-            if "Ocorreu um erro" in contexto_web or "Não encontrei" in contexto_web:
-                falar(contexto_web)
-            else:
-                prompt_final = f"Resuma o seguinte texto de forma concisa:\n\n{contexto_web}"
-                resposta = CEREBRO.pensar(prompt_final, "")
-                falar(resposta)
-            return
-
-    # Lógica de Rolagem
-    if "role para cima" in cmd:
-        pyautogui.scroll(300)
-        return
-    if "role para baixo" in cmd:
-        pyautogui.scroll(-300)
-        return
 
     if "tela" in cmd or "veja" in cmd:
         img = ImageGrab.grab(); buf = BytesIO(); img.save(buf, format="PNG")
@@ -483,103 +386,6 @@ def processar_comando(texto):
     falar(resp)
 
 # ==============================================================================
-#                          FERRAMENTAS (TOOLS)
-# ==============================================================================
-
-def web_search(query):
-    if APP_REF: APP_REF.log_display(f"Processando Web: {query[:50]}")
-    try:
-        if query.startswith("http"):
-            url = query
-        else:
-            urls = list(search(query, num_results=1, lang="pt"))
-            if not urls: return "Não encontrei resultados para essa busca."
-            url = urls[0]
-        
-        if APP_REF: APP_REF.log_display(f"Analisando URL: {url}")
-        
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=5)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        for tag in ['nav', 'footer', 'aside', 'script', 'style']:
-            for s in soup(tag):
-                s.decompose()
-        
-        text_content = ' '.join(p.get_text() for p in soup.find_all('p'))
-        return text_content[:4000] # Limita o tamanho para não sobrecarregar a IA
-        
-    except Exception as e:
-        if APP_REF: APP_REF.log_display(f"Erro na busca/URL: {e}")
-        return f"Ocorreu um erro ao processar a requisição web: {e}"
-
-def obter_clima(cidade=''):
-    try:
-        if not cidade: # Tenta autodetectar a cidade
-            ip_info = requests.get('https://ipinfo.io/json').json()
-            cidade = ip_info.get('city', 'Sao Paulo')
-        
-        url = f"https://wttr.in/{cidade.replace(' ', '+')}?format=j1"
-        data = requests.get(url).json()
-        
-        condicao_atual = data['current_condition'][0]
-        temp = condicao_atual['temp_C']
-        sensacao = condicao_atual['FeelsLikeC']
-        descricao = condicao_atual['lang_pt'][0]['value']
-        
-        return f"O tempo em {data['nearest_area'][0]['areaName'][0]['value']} agora é: {descricao}, com temperatura de {temp} graus e sensação térmica de {sensacao} graus."
-        
-    except Exception as e:
-        if APP_REF: APP_REF.log_display(f"Erro no clima: {e}")
-        return "Não consegui verificar o tempo."
-
-def obter_noticias():
-    try:
-        url_rss = "https://g1.globo.com/rss/g1/"
-        if APP_REF: APP_REF.log_display(f"Buscando notícias: {url_rss}")
-        feed = feedparser.parse(url_rss)
-        manchetes = [entry.title for entry in feed.entries[:3]]
-        if not manchetes:
-            return "Não consegui obter as manchetes."
-        
-        resposta = "As principais manchetes do G1 são: "
-        resposta += "; ".join(manchetes)
-        return resposta
-
-    except Exception as e:
-        if APP_REF: APP_REF.log_display(f"Erro nas notícias: {e}")
-        return "Tive um problema ao buscar as notícias."
-
-def controlar_janela(acao, titulo_alvo=None):
-    try:
-        if titulo_alvo:
-            # Tenta encontrar a janela que contém o título
-            alvos = gw.getWindowsWithTitle(titulo_alvo)
-            if not alvos:
-                return f"Não encontrei nenhuma janela com o título '{titulo_alvo}'."
-            win = alvos[0]
-        else:
-            # Pega a janela ativa
-            win = gw.getActiveWindow()
-            if not win:
-                return "Não há uma janela ativa no momento."
-
-        if acao == 'minimize': win.minimize()
-        elif acao == 'maximize': win.maximize()
-        elif acao == 'restore': win.restore()
-        elif acao == 'close': win.close()
-        elif acao == 'activate': win.activate()
-        else: return f"Ação '{acao}' desconhecida."
-        
-        return f"Janela '{win.title[:20]}...' {acao}."
-
-    except Exception as e:
-        if APP_REF: APP_REF.log_display(f"Erro de janela: {e}")
-        return "Ocorreu um erro ao tentar controlar a janela."
-
-# ==============================================================================
 #                          INTERFACE GRÁFICA (V71)
 # ==============================================================================
 
@@ -592,11 +398,6 @@ class PrintRedirector:
 class AeonGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
-        
-        # Inicialização única do Pygame
-        pygame.init()
-        pygame.mixer.init()
-        
         self.title("AEON V71 - CLEANER")
         self.geometry("450x650")
         self.configure(fg_color=C["bg"])
@@ -653,8 +454,7 @@ class AeonGUI(ctk.CTk):
         ctk.CTkButton(f, text="XIU", width=40, fg_color=C["err"], hover_color="#990000", font=("Arial", 10), command=calar_boca).pack(side="right", padx=5)
         ctk.CTkButton(f, text="OK", width=40, fg_color=C["border"], font=("Arial", 10), command=self.on_send).pack(side="right", padx=2)
 
-        self.mode_call = False
-        self.alarms = []
+        self.mode_call = False; self.alarms = []
         threading.Thread(target=self.boot, daemon=True).start()
 
     def boot(self):
@@ -701,11 +501,9 @@ class AeonGUI(ctk.CTk):
         self.mode_call = not self.mode_call
         c, t = ("#e6b800", "CHAMAR") if self.mode_call else ("#00cc00", "DIRETO")
         self.btn_mode.configure(fg_color=c, text=t)
-        self.log_display(f"Modo de escuta: {'CHAMAR' if self.mode_call else 'DIRETO'}")
 
-    def adicionar_alarme(self, delta, msg):
-        self.alarms.append({"t": datetime.datetime.now() + delta, "msg": msg})
-
+    def adicionar_alarme(self, delta):
+        self.alarms.append({"t": datetime.datetime.now() + delta, "msg": "Tempo Esgotado"})
 
     def loop_alarm(self):
         while True:
@@ -717,93 +515,27 @@ class AeonGUI(ctk.CTk):
             time.sleep(1)
 
     def loop_voz(self):
-        global RECALIBRAR_MIC, CONVERSATION_MODE, LAST_ACTIVITY_TIME, DITADO_MODE
+        global RECALIBRAR_MIC
         rec = sr.Recognizer(); rec.pause_threshold = 0.8
-        
         with sr.Microphone() as source:
-            self.log_display("Calibrando mic...")
-            rec.adjust_for_ambient_noise(source, duration=2)
-            self.log_display("Microfone OK.")
-            
+            self.log_display("Calibrando...")
+            rec.adjust_for_ambient_noise(source, duration=1)
+            self.log_display("Mic OK.")
             while True:
-                time.sleep(0.1) # Pequena pausa para não sobrecarregar
-                
-                # Lógica do Modo Ditado
-                if DITADO_MODE:
-                    try:
-                        self.log_display("Ouvindo ditado...")
-                        audio = rec.listen(source, timeout=None, phrase_time_limit=30)
-                        texto_ditado = rec.recognize_google(audio, language="pt-BR")
-                        
-                        if "encerrar ditado" in texto_ditado.lower():
-                            DITADO_MODE = False
-                            falar("Modo ditado encerrado.")
-                            # Limpa o comando para não digitar "encerrar ditado"
-                            texto_final = texto_ditado.lower().replace("encerrar ditado", "")
-                            pyautogui.write(texto_final)
-                        else:
-                            pyautogui.write(texto_ditado + " ")
-
-                    except sr.UnknownValueError:
-                        self.log_display("Não entendi o ditado.")
-                    except sr.WaitTimeoutError:
-                        pass
-                    continue # Volta para o início do loop de ditado
-
                 if RECALIBRAR_MIC:
                     self.log_display("Recalibrando...")
                     rec.adjust_for_ambient_noise(source, duration=2)
-                    self.log_display("Mic OK."); falar("Pronto.")
+                    self.log_display("Mic OK.")
+                    falar("Pronto.")
                     RECALIBRAR_MIC = False
 
                 try:
-                    # Modo CHAMAR (precisa de palavra de ativação)
-                    if self.mode_call:
-                        # Verifica inatividade no modo de conversação
-                        if CONVERSATION_MODE and (time.time() - LAST_ACTIVITY_TIME > 20):
-                            falar("Inatividade. Retornando ao modo de espera.")
-                            CONVERSATION_MODE = False
-                            self.log_display("Modo de espera (timeout).")
-
-                        listen_timeout = 5 if CONVERSATION_MODE else None
-                        audio = rec.listen(source, timeout=listen_timeout, phrase_time_limit=15)
-                        cmd = rec.recognize_google(audio, language="pt-BR").lower()
-                        
-                        if CONVERSATION_MODE:
-                            LAST_ACTIVITY_TIME = time.time()
-                            self.chat_display(cmd, "VOCÊ (Voz)", "user")
-                            if "dispensar" in cmd:
-                                falar("Entendido."); CONVERSATION_MODE = False
-                                self.log_display("Modo de espera (dispensado).")
-                            else:
-                                threading.Thread(target=processar_comando, args=(cmd,)).start()
-                        else: # Esperando palavra de ativação
-                            if any(t in cmd for t in TRIGGERS):
-                                CONVERSATION_MODE = True
-                                LAST_ACTIVITY_TIME = time.time()
-                                self.log_display("Modo de conversação ativado.")
-                                falar("Sim?")
-                                for t in TRIGGERS: cmd = cmd.replace(t, "").strip()
-                                if cmd:
-                                    self.chat_display(cmd, "VOCÊ (Voz)", "user")
-                                    threading.Thread(target=processar_comando, args=(cmd,)).start()
-                    
-                    # Modo DIRETO (sempre ouvindo)
-                    else:
-                        CONVERSATION_MODE = False # Garante que está desativado
-                        audio = rec.listen(source, timeout=5, phrase_time_limit=10)
-                        cmd = rec.recognize_google(audio, language="pt-BR").lower()
-                        if cmd:
-                            self.chat_display(cmd, "VOCÊ (Voz)", "user")
-                            threading.Thread(target=processar_comando, args=(cmd,)).start()
-
-                except sr.UnknownValueError:
-                    if not self.mode_call: self.log_display("...")
-                except sr.WaitTimeoutError:
-                    pass
-                except Exception as e:
-                    self.log_display(f"Erro no loop de voz: {e}")
-                    time.sleep(1)
+                    audio = rec.listen(source, timeout=5, phrase_time_limit=10)
+                    cmd = rec.recognize_google(audio, language="pt-BR").lower()
+                    if self.mode_call and not any(t in cmd for t in TRIGGERS): continue
+                    self.chat_display(cmd, "VOCÊ (Voz)", "user")
+                    processar_comando(cmd)
+                except: pass
 
 if __name__ == "__main__":
     app = AeonGUI()
