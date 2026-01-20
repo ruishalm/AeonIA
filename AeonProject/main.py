@@ -11,7 +11,7 @@ from core.module_manager import ModuleManager
 from core.brain import Brain
 from core.io_handler import IOHandler
 from core.config_manager import ConfigManager
-from core.context_manager import ContextManager  # <--- NOVO IMPORT
+from core.context_manager import ContextManager 
 
 # ==============================================================================
 #                           CONFIGURAÇÕES DE TEMA (CYBERPUNK)
@@ -38,22 +38,25 @@ class AeonGUI(ctk.CTk):
         
         # 1. INICIALIZAÇÃO DO CORE
         self.config_manager = ConfigManager()
-        self.io_handler = IOHandler()
+        
+        # CORREÇÃO AQUI: Passamos a config para o IOHandler e None para o Installer
+        self.io_handler = IOHandler(self.config_manager.config, None)
+        
         self.brain = Brain(self.config_manager.config, None)
-        self.context_manager = ContextManager() # <--- NOVO: Inicia o Quadro Branco
+        self.context_manager = ContextManager() 
         
         # Pacote de Contexto Global (o que os módulos recebem)
         self.core_context = {
             "config": self.config_manager,
             "io": self.io_handler,
             "brain": self.brain,
-            "context": self.context_manager, # <--- NOVO: Disponível para todos
-            "gui": self      # Permite que módulos mandem msg para a tela
+            "context": self.context_manager,
+            "gui": self
         }
 
         # Carrega Módulos
         self.module_manager = ModuleManager(self.core_context)
-        # Injeta o module_manager no contexto (referência circular segura)
+        # Injeta o module_manager no contexto
         self.core_context["module_manager"] = self.module_manager
         
         self.module_manager.load_modules()
@@ -79,7 +82,7 @@ class AeonGUI(ctk.CTk):
         threading.Thread(target=self.loop_vitals, daemon=True).start()
         
         # Mensagem Inicial
-        self.add_message("Sistema Online. Contexto Compartilhado Ativo.", "SISTEMA")
+        self.add_message("Sistema Online. V80 Operacional.", "SISTEMA")
         self.update_module_list()
 
     # ==========================================================================
@@ -111,14 +114,14 @@ class AeonGUI(ctk.CTk):
         self.scroll_modules.pack(fill="both", expand=True, padx=10, pady=10)
 
     def update_module_list(self):
-        # Limpa lista atual (se houver)
         for widget in self.scroll_modules.winfo_children():
             widget.destroy()
-
-        # Pega módulos reais do ModuleManager
-        modules = self.module_manager.get_loaded_modules()
-        for mod in modules:
-            self.add_module_status(mod.name, True)
+        
+        try:
+            modules = self.module_manager.get_loaded_modules()
+            for mod in modules:
+                self.add_module_status(mod.name, True)
+        except: pass
 
     def add_module_status(self, name, active):
         row = ctk.CTkFrame(self.scroll_modules, fg_color="transparent")
@@ -156,7 +159,6 @@ class AeonGUI(ctk.CTk):
         self.btn_mic.pack(side="right", padx=10)
 
     def add_message(self, text, sender="VOCÊ"):
-        # Renderizador de mensagens (com suporte a Code Block)
         msg_frame = ctk.CTkFrame(self.chat_feed, fg_color="transparent")
         msg_frame.pack(fill="x", pady=5)
 
@@ -167,13 +169,13 @@ class AeonGUI(ctk.CTk):
 
         ctk.CTkLabel(msg_frame, text=sender, font=("Consolas", 10, "bold"), text_color=C["text_dim"]).pack(anchor=align, padx=5)
 
+        # Simples tratamento de markdown
         parts = text.split("```")
         for i, part in enumerate(parts):
             if not part.strip(): continue
             if i % 2 == 0:
                 ctk.CTkLabel(msg_frame, text=part.strip(), fg_color=bubble_color, corner_radius=12, font=("Roboto", 14), text_color=text_color, wraplength=450, justify="left").pack(anchor=align, pady=2, padx=5, ipady=5, ipadx=10)
             else:
-                # Code Block
                 code_box = ctk.CTkTextbox(msg_frame, font=("Consolas", 13), fg_color=C["code_bg"], text_color="#3fb950", border_color="#30363d", border_width=1, width=480, height=min(len(part.split('\n')) * 20 + 20, 300), wrap="none")
                 code_box.insert("0.0", part.strip())
                 code_box.configure(state="disabled")
@@ -186,15 +188,15 @@ class AeonGUI(ctk.CTk):
         if txt:
             self.add_message(txt, "VOCÊ")
             self.entry_msg.delete(0, "end")
-            
-            # THREADING FIX: Processa em background para não travar GUI
             threading.Thread(target=self.process_in_background, args=(txt,), daemon=True).start()
 
     def process_in_background(self, txt):
-        # Chama o ModuleManager
-        response = self.module_manager.route_command(txt)
-        # Atualiza GUI na thread principal
-        self.after(0, lambda: self.add_message(response, "AEON"))
+        try:
+            response = self.module_manager.route_command(txt)
+            self.after(0, lambda: self.add_message(response, "AEON"))
+            self.after(0, lambda: self.io_handler.falar(response))
+        except Exception as e:
+            self.after(0, lambda: self.add_message(f"Erro Crítico: {e}", "SISTEMA"))
 
     def toggle_mic(self):
         print("Alternar microfone...")

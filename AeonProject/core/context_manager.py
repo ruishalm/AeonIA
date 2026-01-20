@@ -26,8 +26,9 @@ class ContextManager:
             "created_at": time.time(),
             "ttl": ttl
         }
-        # Log simples para debug (pode ser removido em produção)
-        print(f"[CONTEXT] '{key}' atualizado.")
+        # Limpeza periódica (chama cleanup ao escrever para manter organizado)
+        self.cleanup()
+        # print(f"[CONTEXT] '{key}' atualizado.") # Debug opcional
 
     def get(self, key: str):
         """
@@ -40,24 +41,37 @@ class ContextManager:
         meta = self.metadata.get(key)
         if meta and meta["ttl"]:
             if time.time() - meta["created_at"] > meta["ttl"]:
-                print(f"[CONTEXT] '{key}' expirou e foi removido.")
+                # print(f"[CONTEXT] '{key}' expirou e foi removido.")
                 del self.data[key]
                 del self.metadata[key]
                 return None
         
         return self.data[key]
 
+    def cleanup(self):
+        """Remove todas as chaves expiradas (Garbage Collector)."""
+        now = time.time()
+        expired = []
+        for key, meta in self.metadata.items():
+            if meta["ttl"] and now - meta["created_at"] > meta["ttl"]:
+                expired.append(key)
+        
+        for key in expired:
+            del self.data[key]
+            del self.metadata[key]
+        
+        if expired:
+            print(f"[CONTEXT] Limpeza: {len(expired)} itens removidos.")
+
     def get_all(self):
         """Retorna todo o contexto atual (útil para debug)."""
-        # Limpa expirados antes de retornar
-        keys = list(self.data.keys())
-        for k in keys:
-            self.get(k) 
+        self.cleanup() # Limpa antes de mostrar
         return self.data
 
     def save_snapshot(self, path="bagagem/memory_dump.json"):
         """Salva o estado atual em JSON para persistência entre reboots."""
         try:
+            self.cleanup()
             # Filtra apenas dados serializáveis (strings, dicts, lists)
             serializable_data = {k: v for k, v in self.data.items() if isinstance(v, (str, int, float, bool, list, dict))}
             

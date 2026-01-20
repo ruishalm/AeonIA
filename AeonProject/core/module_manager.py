@@ -1,4 +1,5 @@
 import os
+import sys  # <--- Essencial para o Hot Reload
 import importlib
 import inspect
 import threading
@@ -56,9 +57,16 @@ class ModuleManager:
         log_display(f"Módulos carregados: {len(self.modules)}")
 
     def _import_and_register(self, module_name):
-        """Helper para importar e registrar um único módulo."""
+        """Helper para importar e registrar um único módulo com HOT RELOAD."""
         try:
-            module_import = importlib.import_module(module_name)
+            # CORREÇÃO DE HOT RELOAD:
+            # Se o módulo já existe na memória, força o recarregamento do arquivo.
+            if module_name in sys.modules:
+                module_import = importlib.reload(sys.modules[module_name])
+                log_display(f"  ↻ Módulo '{module_name}' recarregado (Hot Reload).")
+            else:
+                module_import = importlib.import_module(module_name)
+            
             for name, obj in inspect.getmembers(module_import):
                 if inspect.isclass(obj) and issubclass(obj, AeonModule) and obj is not AeonModule:
                     # Instanciar
@@ -78,7 +86,7 @@ class ModuleManager:
                         for trigger in module_instance.triggers:
                             self.trigger_map[trigger.lower()] = module_instance
                         
-                        log_display(f"  ✓ {module_instance.name} carregado.")
+                        log_display(f"  ✓ {module_instance.name} registrado.")
                     break
         except Exception as e:
             log_display(f"Erro importando {module_name}: {e}")
@@ -86,9 +94,8 @@ class ModuleManager:
     def scan_new_modules(self):
         """Re-escaneia módulos (usado pela Singularidade)."""
         log_display("Re-escaneando novos módulos...")
-        # Simplesmente roda o load_modules de novo (versão simplificada para evitar duplicatas complexas)
-        # O ideal seria verificar um por um, mas para o MVP, vamos recarregar.
-        self.trigger_map = {} # Limpa triggers antigos para evitar lixo
+        # Limpa triggers antigos para evitar lixo e recarrega
+        self.trigger_map = {} 
         self.modules = []
         self.load_modules()
         return ["Reloaded"]
@@ -115,7 +122,6 @@ class ModuleManager:
         triggered = False
         
         # ORDENAÇÃO CRÍTICA: Triggers maiores primeiro
-        # Ex: "criar site" (10 chars) vem antes de "criar" (5 chars)
         sorted_triggers = sorted(self.trigger_map.items(), key=lambda x: len(x[0]), reverse=True)
 
         for trigger, module in sorted_triggers:
@@ -126,7 +132,7 @@ class ModuleManager:
                 log_display(f"Trigger '{trigger}' acionou '{module.name}'")
                 response = module.process(command)
                 triggered = True
-                break # Para no primeiro trigger (o mais específico)
+                break 
 
         # 3. FALLBACK (Brain)
         if not triggered:
@@ -146,7 +152,7 @@ class ModuleManager:
 
         return response if response else ""
 
-    # Métodos de Foco (Iguais ao anterior)
+    # Métodos de Foco
     def lock_focus(self, module, timeout=None):
         with self.focus_lock:
             self.focused_module = module
