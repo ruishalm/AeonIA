@@ -76,6 +76,11 @@ class DevFactory(AeonModule):
                 print(f"[DevFactory] Erro ao criar workspace: {e}")
                 return False
         return True
+    
+    def on_unload(self) -> bool:
+        """Hook: Limpar ao descarregar o módulo."""
+        self._save_projects_log()
+        return True
 
     def _load_projects_log(self):
         """Carrega histórico de projetos criados."""
