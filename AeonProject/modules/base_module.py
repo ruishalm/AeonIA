@@ -27,16 +27,24 @@ class AeonModule(ABC):
         self._loaded = False
 
     @property
-    @abstractmethod
     def name(self) -> str:
         """Nome único do módulo."""
-        raise NotImplementedError
+        return getattr(self, '_name', 'Unnamed')
+    
+    @name.setter
+    def name(self, value: str):
+        """Setter para nome do módulo."""
+        self._name = value
 
     @property
-    @abstractmethod
     def triggers(self) -> List[str]:
         """Lista de palavras-chave que ativam este módulo."""
-        raise NotImplementedError
+        return getattr(self, '_triggers', [])
+    
+    @triggers.setter
+    def triggers(self, value: List[str]):
+        """Setter para triggers do módulo."""
+        self._triggers = value
 
     @property
     def dependencies(self) -> List[str]:

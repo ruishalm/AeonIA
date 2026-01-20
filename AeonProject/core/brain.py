@@ -25,7 +25,11 @@ class Brain:
         
         # Conecta aos serviços no boot
         self.reconectar()
-        self.local_ready = self.installer.verificar_ollama()
+        # Verificar Ollama apenas se installer foi fornecido
+        if self.installer:
+            self.local_ready = self.installer.verificar_ollama()
+        else:
+            self.local_ready = False
 
     def reconectar(self):
         """Tenta (re)conectar ao serviço de nuvem (Groq)."""
@@ -50,9 +54,18 @@ class Brain:
         Processa um prompt de texto, usando o melhor modelo de linguagem disponível.
         """
         prefs_str = "\n".join([f"- {k}: {v}" for k, v in user_prefs.items()])
-        system_prompt = f"""Você é um assistente factual chamado Aeon. Data atual: {datetime.datetime.now()}. 
-Responda em Português do Brasil. Seja conciso e direto. 
-Se você não tem certeza, admita que não sabe.
+        system_prompt = f"""Você é um assistente chamado Aeon, focado em fornecer respostas precisas e contextualizadas.
+Data atual: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}.
+Responda SEMPRE em Português do Brasil.
+Seja conciso e direto.
+
+IMPORTANTE: Você tem acesso ao histórico completo da conversa. Use-o para:
+- Lembrar de pergunta anterior se perguntarem "o que eu disse?"
+- Manter coerência com a conversa
+- Responder perguntas que referenciem conversas anteriores
+
+Se não souber responder, admita que não sabe.
+
 Preferências do usuário:
 {prefs_str}"""
 
@@ -64,7 +77,7 @@ Preferências do usuário:
                     model=self.config.get("model_txt_cloud", "llama-3.3-70b-versatile"),
                     messages=[
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Contexto:\n{historico_txt}\n\nUsuário: {prompt}"}
+                        {"role": "user", "content": f"{historico_txt}\n\nPergunta atual do usuário: {prompt}"}
                     ],
                     temperature=0.6, max_tokens=400
                 )

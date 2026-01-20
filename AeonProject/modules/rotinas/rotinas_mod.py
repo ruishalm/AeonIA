@@ -23,8 +23,8 @@ class RotinasModule(AeonModule):
 
     @property
     def dependencies(self) -> List[str]:
-        """Rotinas depende de config_manager para persistência."""
-        return ["config_manager"]
+        """Rotinas não tem dependências de módulos."""
+        return []  # Usa core_context direto, não módulos
 
     @property
     def metadata(self) -> Dict[str, str]:

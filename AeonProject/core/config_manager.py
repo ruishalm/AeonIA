@@ -13,10 +13,12 @@ class ConfigManager:
         self.sys_path = os.path.join(self.storage_path, "system.json")
         self.tasks_path = os.path.join(self.storage_path, "tasks.json")
         self.mem_path = os.path.join(self.storage_path, "memoria.json")
+        self.history_path = os.path.join(self.storage_path, "historico.json")
 
         self.system_data = self._load_json(self.sys_path, default={"apps": {}, "routines": {}, "triggers": [], "themes": {}})
         self.tasks = self._load_json(self.tasks_path, default=[])
         self.memory = self._load_json(self.mem_path, default=[])
+        self.history = self._load_json(self.history_path, default={"conversations": [], "last_context": ""})
 
     def _load_json(self, file_path, default=None):
         if os.path.exists(file_path):
@@ -58,4 +60,32 @@ class ConfigManager:
         self.memory.append({"user": user_input, "aeon": aeon_response, "time": str(timestamp)})
         # Salva apenas as últimas 20 interações
         self._save_json(self.mem_path, self.memory[-20:])
+
+    # --- Métodos de Histórico (Contexto Persistente) ---
+    def get_history(self):
+        """Retorna o histórico completo de conversas"""
+        return self.history.get("conversations", [])
+    
+    def add_to_history(self, user_input, aeon_response):
+        """Adiciona uma interação ao histórico"""
+        import datetime
+        interaction = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "user": user_input,
+            "aeon": aeon_response
+        }
+        self.history["conversations"].append(interaction)
+        # Mantém apenas as últimas 50 conversas
+        if len(self.history["conversations"]) > 50:
+            self.history["conversations"] = self.history["conversations"][-50:]
+        self._save_json(self.history_path, self.history)
+    
+    def get_last_context(self):
+        """Retorna o último contexto salvo"""
+        return self.history.get("last_context", "")
+    
+    def save_context(self, context):
+        """Salva contexto atual para próximas sessões"""
+        self.history["last_context"] = context
+        self._save_json(self.history_path, self.history)
 

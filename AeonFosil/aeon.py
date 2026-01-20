@@ -199,8 +199,17 @@ class Brain:
                 comp = self.client.chat.completions.create(
                     model=CFG["model_txt_cloud"],
                     messages=[
-                        {"role": "system", "content": f"Data: {datetime.datetime.now()}. Responda curto (PT-BR)."},
-                        {"role": "user", "content": f"Hist:\n{historico_txt}\n\nUser: {prompt}"}
+                        {"role": "system", "content": f"""Você é Aeon, um assistente focado em respostas precisas e contextualizadas.
+Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}.
+Responda SEMPRE em Português do Brasil, de forma concisa.
+
+IMPORTANTE: Você tem acesso ao histórico completo da conversa. Use-o para:
+- Lembrar pergunta anterior se perguntarem "o que eu disse?"
+- Manter coerência com conversas anteriores
+- Responder referências a mensagens anteriores
+
+Se não souber, admita."""},
+                        {"role": "user", "content": f"{historico_txt}\n\nPergunta atual: {prompt}"}
                     ], temperature=0.6, max_tokens=300
                 )
                 return comp.choices[0].message.content
@@ -212,7 +221,8 @@ class Brain:
             if APP_REF: APP_REF.log_display("Ollama Local...")
             try:
                 r = ollama.chat(model=CFG["model_txt_local"], messages=[
-                    {'role':'system','content':"Curto."}, {'role':'user','content':prompt}
+                    {'role':'system','content':"Você é Aeon. Responda curto em PT-BR."}, 
+                    {'role':'user','content':f"{historico_txt}\n\n{prompt}"}
                 ])
                 return r['message']['content']
             except: pass

@@ -23,7 +23,7 @@ class ControleModule(AeonModule):
     @property
     def dependencies(self) -> List[str]:
         """Controle depende de brain e io_handler."""
-        return ["brain", "io_handler"]
+        return []  # Dependências do core_context, não de módulos
 
     @property
     def metadata(self) -> Dict[str, str]:
@@ -48,6 +48,13 @@ class ControleModule(AeonModule):
         return True
 
     def process(self, command: str) -> str:
+        # Diagnóstico de módulos
+        if "diagnóstico" in command or "diagnostico" in command or "verificar módulos" in command or "verificar modulos" in command:
+            module_manager = self.core_context.get("module_manager")
+            if module_manager:
+                return module_manager.diagnose_modules()
+            return "ModuleManager não encontrado."
+
         # Reconectar ao serviço de nuvem
         if "conectar" in command or "online" in command or "reconectar" in command:
             brain = self.core_context.get("brain")

@@ -37,7 +37,9 @@ class ModuleManager:
         Escaneia /modules, importa dinamicamente cada módulo,
         instancia e registra (com validação de dependências).
         """
-        modules_dir = os.path.join("AeonProject", "modules")
+        # Usa caminho relativo que funciona de qualquer lugar
+        modules_dir = os.path.join(os.path.dirname(__file__), "..", "modules")
+        modules_dir = os.path.abspath(modules_dir)  # Normaliza para absoluto
         log_display(f"Carregando módulos de: {modules_dir}")
 
         # PASSO 1: Descobrir e instanciar todos os módulos
@@ -264,3 +266,41 @@ class ModuleManager:
                 log_display(f"   Status: {'✓ OK' if info['dependencies_ok'] else '✗ FALHA'}")
         
         log_display(f"\n{'='*60}\n")
+
+    def diagnose_modules(self):
+        """Diagnóstico completo dos módulos - retorna relatório"""
+        report = "\n" + "="*70 + "\n"
+        report += "DIAGNÓSTICO DE MÓDULOS - AEON V80\n"
+        report += "="*70 + "\n\n"
+        
+        # Módulos OK
+        ok_modules = [m for m in self.modules if m.check_dependencies()]
+        report += f"✓ MÓDULOS OK ({len(ok_modules)}/{len(self.modules)}):\n"
+        for m in ok_modules:
+            report += f"  • {m.name} ({len(m.triggers)} triggers)\n"
+        
+        # Módulos com problemas
+        problem_modules = [m for m in self.modules if not m.check_dependencies()]
+        if problem_modules:
+            report += f"\n✗ MÓDULOS COM PROBLEMAS ({len(problem_modules)}):\n"
+            for m in problem_modules:
+                report += f"  • {m.name}\n"
+                report += f"    Dependências: {m.dependencies}\n"
+                report += f"    Status: Não carregado\n"
+        
+        # Módulos falhados no carregamento
+        if self.failed_modules:
+            report += f"\n⚠ FALHAS NO CARREGAMENTO ({len(self.failed_modules)}):\n"
+            for name, error in self.failed_modules:
+                report += f"  • {name}: {error}\n"
+        
+        report += f"\n{'='*70}\n"
+        report += f"TOTAL: {len(self.modules)} módulos | "
+        report += f"{len(ok_modules)} OK | "
+        report += f"{len(problem_modules)} com problemas | "
+        report += f"{len(self.failed_modules)} falhas\n"
+        report += f"TRIGGERS: {len(self.trigger_map)} registrados\n"
+        report += "="*70 + "\n"
+        
+        return report
+
