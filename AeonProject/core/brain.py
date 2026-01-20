@@ -54,17 +54,19 @@ class Brain:
         Processa um prompt de texto, usando o melhor modelo de linguagem disponível.
         """
         prefs_str = "\n".join([f"- {k}: {v}" for k, v in user_prefs.items()])
-        system_prompt = f"""Você é um assistente chamado Aeon, focado em fornecer respostas precisas e contextualizadas.
-Data atual: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}.
-Responda SEMPRE em Português do Brasil.
-Seja conciso e direto.
+        
+        system_prompt = f"""Você é Aeon, um assistente focado em respostas precisas.
+Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}
+Responda SEMPRE em Português do Brasil, de forma concisa.
 
-IMPORTANTE: Você tem acesso ao histórico completo da conversa. Use-o para:
-- Lembrar de pergunta anterior se perguntarem "o que eu disse?"
-- Manter coerência com a conversa
-- Responder perguntas que referenciem conversas anteriores
+CONTEXTO DE CONVERSAS ANTERIORES:
+{historico_txt}
 
-Se não souber responder, admita que não sabe.
+REGRAS IMPORTANTES:
+1. Se o usuário perguntar sobre algo dito ANTES (ex: "o que eu disse?"), consulte o contexto acima
+2. Use informações das conversas anteriores para responder com coerência
+3. Se referenciarem algo anterior, mencione que você lembra
+4. Se não souber, admita
 
 Preferências do usuário:
 {prefs_str}"""
@@ -77,14 +79,14 @@ Preferências do usuário:
                     model=self.config.get("model_txt_cloud", "llama-3.3-70b-versatile"),
                     messages=[
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"{historico_txt}\n\nPergunta atual do usuário: {prompt}"}
+                        {"role": "user", "content": f"Pergunta atual: {prompt}"}
                     ],
                     temperature=0.6, max_tokens=400
                 )
                 return comp.choices[0].message.content
             except Exception as e:
                 log_display(f"ERRO GROQ: {e}")
-                self.online = False # Assume que a conexão caiu
+                self.online = False
 
         # Prioridade 2: Local (Ollama)
         if self.local_ready:

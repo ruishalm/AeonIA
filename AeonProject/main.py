@@ -66,18 +66,8 @@ class AeonGUI(ctk.CTk):
         threading.Thread(target=self.loop_vitals, daemon=True).start()
         threading.Thread(target=self.loop_voice, daemon=True).start()
         
-        # Mensagem de Boas Vindas + Carrega Histórico
+        # Mensagem de Boas Vindas (SEM histórico sendo exibido)
         self.add_message("Sistema Online. Módulos carregados.", "SISTEMA")
-        
-        # Carrega histórico anterior se existir
-        if self.config_manager:
-            history = self.config_manager.get_history()
-            if history:
-                self.add_message(f"📚 Histórico carregado: {len(history)} conversas anteriores", "SISTEMA")
-                # Mostra últimas 3 conversas
-                for conv in history[-3:]:
-                    self.add_message(conv.get("user", "?"), "VOCÊ")
-                    self.add_message(conv.get("aeon", ""), "AEON")
 
 
     # ==========================================================================
@@ -291,36 +281,28 @@ class AeonGUI(ctk.CTk):
             if resposta:
                 resposta_str = str(resposta)
                 self.add_message(resposta_str, "AEON")
-                # Salva no histórico
+                # Salva no histórico (silenciosamente)
                 if self.config_manager:
                     self.config_manager.add_to_history(command, resposta_str)
             else:
-                # Se nenhum módulo respondeu, usa o Brain com contexto completo
+                # Se nenhum módulo respondeu, usa o Brain com contexto
                 if self.module_manager.core_context.get("brain"):
                     brain = self.module_manager.core_context["brain"]
                     
-                    # Constrói contexto: últimas 5 conversas
-                    historico_txt = "HISTÓRICO DA CONVERSA:\n"
+                    # Pega RESUMO do contexto anterior (não mensagens inteiras)
+                    context_summary = ""
                     if self.config_manager:
-                        hist = self.config_manager.get_history()
-                        if hist:
-                            # Últimas 5 conversas
-                            for i, conv in enumerate(hist[-5:], 1):
-                                user_msg = conv.get('user', '?')
-                                aeon_msg = conv.get('aeon', '?')
-                                historico_txt += f"{i}. Usuário: {user_msg}\n   Aeon: {aeon_msg}\n"
-                        else:
-                            historico_txt += "(Nenhuma conversa anterior)"
-                    else:
-                        historico_txt += "(Sem histórico disponível)"
+                        context_summary = self.config_manager.get_context_summary(num_previous=5)
                     
-                    resposta = brain.pensar(command, historico_txt)
+                    resposta = brain.pensar(command, context_summary)
                     self.add_message(resposta, "AEON")
                     self.update_leds()
                     
-                    # Salva no histórico
+                    # Salva no histórico (silenciosamente)
                     if self.config_manager:
                         self.config_manager.add_to_history(command, resposta)
+        except Exception as e:
+            self.add_message(f"Erro: {e}", "SISTEMA")
         except Exception as e:
             self.add_message(f"Erro: {e}", "SISTEMA")
 

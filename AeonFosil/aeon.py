@@ -199,17 +199,19 @@ class Brain:
                 comp = self.client.chat.completions.create(
                     model=CFG["model_txt_cloud"],
                     messages=[
-                        {"role": "system", "content": f"""Você é Aeon, um assistente focado em respostas precisas e contextualizadas.
-Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}.
+                        {"role": "system", "content": f"""Você é Aeon, um assistente focado em respostas precisas.
+Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}
 Responda SEMPRE em Português do Brasil, de forma concisa.
 
-IMPORTANTE: Você tem acesso ao histórico completo da conversa. Use-o para:
-- Lembrar pergunta anterior se perguntarem "o que eu disse?"
-- Manter coerência com conversas anteriores
-- Responder referências a mensagens anteriores
+CONTEXTO DE CONVERSAS ANTERIORES:
+{historico_txt}
 
-Se não souber, admita."""},
-                        {"role": "user", "content": f"{historico_txt}\n\nPergunta atual: {prompt}"}
+REGRAS IMPORTANTES:
+1. Se o usuário perguntar sobre algo dito ANTES (ex: "o que eu disse?"), consulte o contexto acima
+2. Use informações das conversas anteriores para responder com coerência
+3. Se referenciarem algo anterior, mencione que você lembra
+4. Se não souber, admita"""},
+                        {"role": "user", "content": f"Pergunta atual: {prompt}"}
                     ], temperature=0.6, max_tokens=300
                 )
                 return comp.choices[0].message.content
@@ -221,8 +223,8 @@ Se não souber, admita."""},
             if APP_REF: APP_REF.log_display("Ollama Local...")
             try:
                 r = ollama.chat(model=CFG["model_txt_local"], messages=[
-                    {'role':'system','content':"Você é Aeon. Responda curto em PT-BR."}, 
-                    {'role':'user','content':f"{historico_txt}\n\n{prompt}"}
+                    {'role':'system','content':"Você é Aeon. Responda curto em PT-BR. Lembre de conversas anteriores se perguntarem."}, 
+                    {'role':'user','content':f"Contexto anterior: {historico_txt}\n\n{prompt}"}
                 ])
                 return r['message']['content']
             except: pass

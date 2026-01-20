@@ -75,10 +75,30 @@ class ConfigManager:
             "aeon": aeon_response
         }
         self.history["conversations"].append(interaction)
-        # Mantém apenas as últimas 50 conversas
-        if len(self.history["conversations"]) > 50:
-            self.history["conversations"] = self.history["conversations"][-50:]
+        # Mantém apenas as últimas 100 conversas
+        if len(self.history["conversations"]) > 100:
+            self.history["conversations"] = self.history["conversations"][-100:]
         self._save_json(self.history_path, self.history)
+    
+    def get_context_summary(self, num_previous=5):
+        """
+        Retorna um RESUMO dos tópicos discutidos (para passar ao Brain).
+        Não retorna mensagens inteiras, apenas temas.
+        """
+        hist = self.history.get("conversations", [])
+        if not hist:
+            return "Nenhuma conversa anterior."
+        
+        # Pega últimas N conversas
+        recent = hist[-num_previous:]
+        
+        # Cria um resumo dos tópicos
+        summary = "Conversas anteriores desta sessão:\n"
+        for i, conv in enumerate(recent, 1):
+            user = conv.get('user', '?')[:50]  # Primeira 50 chars
+            summary += f"  {i}. Usuário perguntou sobre: {user}...\n"
+        
+        return summary
     
     def get_last_context(self):
         """Retorna o último contexto salvo"""
