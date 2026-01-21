@@ -48,7 +48,9 @@ def audit_modules():
             with open(mod_file, 'r', encoding='utf-8') as f:
                 code = f.read()
             
-            # Extrai informações
+            # Extrai informações (NOTA: Análise via Regex é frágil.
+            # Uma abordagem mais robusta usaria o módulo `ast` para
+            # analisar a árvore sintática do código.)
             has_on_load = "def on_load(self)" in code
             has_on_unload = "def on_unload(self)" in code
             has_dependencies = "@property" in code and "dependencies" in code

@@ -1,95 +1,115 @@
 import json
-import os
 import time
-from datetime import datetime
+import threading
+from pathlib import Path
 
 class ContextManager:
     """
-    O 'Quadro Branco' do Aeon.
+    O 'Quadro Branco' do Aeon (Thread-Safe).
     Permite que módulos compartilhem dados entre si sem acoplamento.
     Exemplo: Visão salva 'erro_lido', Dev lê 'erro_lido'.
     """
     def __init__(self):
         self.data = {}
-        self.metadata = {} # Para guardar timestamps (TTL)
+        self.metadata = {}  # Para guardar timestamps (TTL)
+        self._lock = threading.Lock()
 
     def set(self, key: str, value, ttl: int = None):
         """
-        Salva um dado no contexto.
+        Salva um dado no contexto de forma segura.
         Args:
             key: Nome da chave (ex: 'clipboard_content')
             value: O valor (pode ser qualquer objeto)
             ttl: (Opcional) Tempo de vida em segundos. Se passar, o dado expira.
         """
-        self.data[key] = value
-        self.metadata[key] = {
-            "created_at": time.time(),
-            "ttl": ttl
-        }
-        # Limpeza periódica (chama cleanup ao escrever para manter organizado)
+        with self._lock:
+            self.data[key] = value
+            self.metadata[key] = {
+                "created_at": time.time(),
+                "ttl": ttl
+            }
+        # A limpeza é chamada fora do lock para evitar deadlocks se a limpeza
+        # precisar chamar outro método que também usa o lock.
         self.cleanup()
-        # print(f"[CONTEXT] '{key}' atualizado.") # Debug opcional
 
     def get(self, key: str):
         """
-        Recupera um dado. Retorna None se não existir ou tiver expirado.
+        Recupera um dado de forma segura. Retorna None se não existir ou tiver expirado.
         """
-        if key not in self.data:
-            return None
-        
-        # Checagem de Expiração (TTL)
-        meta = self.metadata.get(key)
-        if meta and meta["ttl"]:
-            if time.time() - meta["created_at"] > meta["ttl"]:
-                # print(f"[CONTEXT] '{key}' expirou e foi removido.")
-                del self.data[key]
-                del self.metadata[key]
+        with self._lock:
+            if key not in self.data:
                 return None
-        
-        return self.data[key]
+            
+            meta = self.metadata.get(key)
+            if meta and meta["ttl"]:
+                if time.time() - meta["created_at"] > meta["ttl"]:
+                    self._cleanup_key(key) # Usa método interno para remover
+                    return None
+            
+            return self.data.get(key)
+
+    def _cleanup_key(self, key: str):
+        """Método auxiliar para remover uma chave específica (deve ser chamado dentro de um lock)."""
+        if key in self.data:
+            del self.data[key]
+        if key in self.metadata:
+            del self.metadata[key]
 
     def cleanup(self):
         """Remove todas as chaves expiradas (Garbage Collector)."""
         now = time.time()
         expired = []
-        for key, meta in self.metadata.items():
-            if meta["ttl"] and now - meta["created_at"] > meta["ttl"]:
-                expired.append(key)
+        # Primeiro, coleta as chaves a serem removidas sem modificar o dict
+        with self._lock:
+            for key, meta in self.metadata.items():
+                if meta.get("ttl") and now - meta["created_at"] > meta["ttl"]:
+                    expired.append(key)
         
-        for key in expired:
-            del self.data[key]
-            del self.metadata[key]
-        
+        # Depois, remove as chaves encontradas
         if expired:
+            with self._lock:
+                for key in expired:
+                    self._cleanup_key(key)
             print(f"[CONTEXT] Limpeza: {len(expired)} itens removidos.")
 
     def get_all(self):
-        """Retorna todo o contexto atual (útil para debug)."""
-        self.cleanup() # Limpa antes de mostrar
-        return self.data
+        """Retorna uma cópia do contexto atual (útil para debug)."""
+        self.cleanup()
+        with self._lock:
+            return self.data.copy()
 
-    def save_snapshot(self, path="bagagem/memory_dump.json"):
+    def save_snapshot(self, path="AeonProject/bagagem/memory_dump.json"):
         """Salva o estado atual em JSON para persistência entre reboots."""
+        self.cleanup()
+        filepath = Path(path)
+        
+        with self._lock:
+            # Filtra apenas dados serializáveis
+            serializable_data = {
+                k: v for k, v in self.data.items() 
+                if isinstance(v, (str, int, float, bool, list, dict, type(None)))
+            }
+
         try:
-            self.cleanup()
-            # Filtra apenas dados serializáveis (strings, dicts, lists)
-            serializable_data = {k: v for k, v in self.data.items() if isinstance(v, (str, int, float, bool, list, dict))}
-            
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+            with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(serializable_data, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
             print(f"[CONTEXT] Erro ao salvar snapshot: {e}")
             return False
 
-    def load_snapshot(self, path="bagagem/memory_dump.json"):
+    def load_snapshot(self, path="AeonProject/bagagem/memory_dump.json"):
         """Carrega estado anterior do JSON."""
-        if not os.path.exists(path):
+        filepath = Path(path)
+        if not filepath.exists():
             return False
+            
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
+            
+            with self._lock:
                 self.data.update(loaded)
             return True
         except Exception as e:

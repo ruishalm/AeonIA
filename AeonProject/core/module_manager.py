@@ -1,9 +1,9 @@
-import os
-import sys  # <--- Essencial para o Hot Reload
 import importlib
 import inspect
+import sys
 import threading
-import time
+from pathlib import Path
+
 from modules.base_module import AeonModule
 
 def log_display(msg):
@@ -16,51 +16,43 @@ class ModuleManager:
     
     def __init__(self, core_context):
         self.core_context = core_context
-        self.modules = []                    # Lista de todas as instâncias
-        self.trigger_map = {}               # Mapeia trigger → módulo
-        self.module_map = {}                # Mapeia nome → módulo (para busca rápida)
-        self.failed_modules = []            # Módulos que falharam no carregamento
+        self.modules = []
+        self.trigger_map = {}
+        self.module_map = {}
+        self.failed_modules = []
         
-        # Sistema de FOCO (Módulo com microfone travado)
-        self.focused_module = None           # Módulo com foco (None = modo livre)
-        self.focus_timeout = None            # Thread de timeout do foco
-        self.focus_lock = threading.Lock()   # Lock para thread-safety
+        self.focused_module = None
+        self.focus_timeout = None
+        self.focus_lock = threading.Lock()
         
-        # Memória de Conversa (Corrige Efeito Dory)
-        self.chat_history = []               
-        self.max_history = 10                
+        self.chat_history = []
+        self.max_history = 10
+        self.history_lock = threading.Lock()
 
     def load_modules(self):
         """Escaneia /modules e carrega tudo."""
-        # Usa caminho relativo que funciona de qualquer lugar
-        modules_dir = os.path.join(os.path.dirname(__file__), "..", "modules")
-        modules_dir = os.path.abspath(modules_dir)
+        modules_dir = Path(__file__).parent.parent / "modules"
         log_display(f"Carregando módulos de: {modules_dir}")
 
-        # Varre diretórios
-        for item in os.listdir(modules_dir):
-            module_path = os.path.join(modules_dir, item)
-            if os.path.isdir(module_path) and item != "__pycache__":
+        for item in modules_dir.iterdir():
+            if item.is_dir() and item.name != "__pycache__":
                 try:
-                    # Encontrar arquivo *_mod.py
-                    mod_file = next((f for f in os.listdir(module_path) if f.endswith("_mod.py")), None)
-                    if not mod_file: continue
+                    mod_file = next(item.glob("*_mod.py"), None)
+                    if not mod_file:
+                        continue
 
-                    module_name = f"modules.{item}.{mod_file.replace('.py', '')}"
+                    module_name = f"modules.{item.name}.{mod_file.stem}"
                     self._import_and_register(module_name)
 
                 except Exception as e:
-                    log_display(f"  ✗ Erro ao carregar '{item}': {e}")
-                    self.failed_modules.append({"name": item, "error": str(e)})
+                    log_display(f"  ✗ Erro ao carregar '{item.name}': {e}")
+                    self.failed_modules.append({"name": item.name, "error": str(e)})
         
-        # Log final
         log_display(f"Módulos carregados: {len(self.modules)}")
 
     def _import_and_register(self, module_name):
         """Helper para importar e registrar um único módulo com HOT RELOAD."""
         try:
-            # CORREÇÃO DE HOT RELOAD:
-            # Se o módulo já existe na memória, força o recarregamento do arquivo.
             if module_name in sys.modules:
                 module_import = importlib.reload(sys.modules[module_name])
                 log_display(f"  ↻ Módulo '{module_name}' recarregado (Hot Reload).")
@@ -69,23 +61,16 @@ class ModuleManager:
             
             for name, obj in inspect.getmembers(module_import):
                 if inspect.isclass(obj) and issubclass(obj, AeonModule) and obj is not AeonModule:
-                    # Instanciar
                     module_instance = obj(self.core_context)
-                    
-                    # Verificar dependências
                     if not module_instance.check_dependencies():
                         log_display(f"  ⚠ Dependências falharam para {module_instance.name}")
                         return
 
-                    # Chamar on_load
                     if module_instance.on_load():
                         self.modules.append(module_instance)
                         self.module_map[module_instance.name.lower()] = module_instance
-                        
-                        # Registrar triggers
                         for trigger in module_instance.triggers:
                             self.trigger_map[trigger.lower()] = module_instance
-                        
                         log_display(f"  ✓ {module_instance.name} registrado.")
                     break
         except Exception as e:
@@ -94,19 +79,19 @@ class ModuleManager:
     def scan_new_modules(self):
         """Re-escaneia módulos (usado pela Singularidade)."""
         log_display("Re-escaneando novos módulos...")
-        # Limpa triggers antigos para evitar lixo e recarrega
-        self.trigger_map = {} 
+        self.trigger_map = {}
         self.modules = []
         self.load_modules()
         return ["Reloaded"]
 
     def _format_history(self):
-        """Formata histórico para o LLM."""
-        history_text = ""
-        for msg in self.chat_history:
-            role = "Usuário" if msg['role'] == 'user' else "Aeon"
-            history_text += f"{role}: {msg['content']}\n"
-        return history_text
+        """Formata histórico para o LLM de forma segura."""
+        with self.history_lock:
+            history_text = ""
+            for msg in self.chat_history:
+                role = "Usuário" if msg['role'] == 'user' else "Aeon"
+                history_text += f"{role}: {msg['content']}\n"
+            return history_text
 
     def route_command(self, command: str) -> str:
         """Roteia comando com PRIORIDADE DE TAMANHO."""
@@ -118,10 +103,8 @@ class ModuleManager:
             log_display(f"🔒 FOCO: {self.focused_module.name}")
             return self.focused_module.process(command) or ""
         
-        # 2. MODO LIVRE (Agora ordenado!)
+        # 2. MODO LIVRE (Ordenado)
         triggered = False
-        
-        # ORDENAÇÃO CRÍTICA: Triggers maiores primeiro
         sorted_triggers = sorted(self.trigger_map.items(), key=lambda x: len(x[0]), reverse=True)
 
         for trigger, module in sorted_triggers:
@@ -143,12 +126,15 @@ class ModuleManager:
             else:
                 response = "Cérebro indisponível."
 
-        # 4. MEMÓRIA
+        # 4. MEMÓRIA (Thread-Safe)
         if response:
-            self.chat_history.append({"role": "user", "content": command})
-            self.chat_history.append({"role": "assistant", "content": response})
-            if len(self.chat_history) > self.max_history * 2:
-                self.chat_history.pop(0); self.chat_history.pop(0)
+            with self.history_lock:
+                self.chat_history.append({"role": "user", "content": command})
+                self.chat_history.append({"role": "assistant", "content": response})
+                # Garante que a lista não exceda o tamanho máximo
+                history_len = len(self.chat_history)
+                if history_len > self.max_history * 2:
+                    self.chat_history = self.chat_history[history_len - self.max_history * 2:]
 
         return response if response else ""
 

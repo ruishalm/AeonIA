@@ -112,6 +112,7 @@ class SingularityModule(AeonModule):
         except: return False
 
     def _build_prompt(self):
+        # CORREÇÃO: Adicionado coding utf-8 e reforço de sintaxe
         return textwrap.dedent(f"""
             ATUE COMO ENGENHEIRO PYTHON SÊNIOR.
             Tarefa: Criar módulo para sistema Aeon.
@@ -121,8 +122,9 @@ class SingularityModule(AeonModule):
             - Gatilhos: {self.temp_data['triggers']}
             - Lógica: {self.temp_data['logic']}
             
-            TEMPLATE OBRIGATÓRIO:
+            TEMPLATE OBRIGATÓRIO (Use Exatamente este formato):
             ```python
+            # -*- coding: utf-8 -*-
             from modules.base_module import AeonModule
             # outros imports padrão
             

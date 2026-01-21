@@ -41,9 +41,16 @@ class AeonGUI(ctk.CTk):
         
         # Proteção: Se config falhar, passa dict vazio
         cfg = getattr(self.config_manager, 'config', {})
-        self.io_handler = IOHandler(cfg, None)
+
+        # TODO: Implementar a verificação do 'installer' para o Piper.
+        piper_ready = False
+        piper_exe = None
+        voice_model = None
+        self.io_handler = IOHandler(cfg, piper_ready, piper_exe, voice_model)
         
-        self.brain = Brain(cfg, None)
+        # TODO: Implementar a verificação do 'installer' para o Ollama.
+        local_ready = False 
+        self.brain = Brain(cfg, local_ready)
         self.context_manager = ContextManager() 
         
         # Padronização das chaves do Contexto
@@ -136,7 +143,9 @@ class AeonGUI(ctk.CTk):
         label = ctk.CTkLabel(frame, text=text, font=("Consolas", 11, "bold"), text_color=C["text_dim"])
         label.pack(side="left")
         
-        # Truque pythonico: guardamos os widgets dentro do frame para acessar depois
+        # Truque pythônico: Anexamos os widgets 'canvas' e 'led' diretamente
+        # ao objeto do frame para acessá-los facilmente mais tarde para
+        # alterar a cor do LED. Ex: self.led_online.canvas.itemconfig(...)
         frame.canvas = canvas
         frame.led = led_id
         return frame
@@ -149,7 +158,8 @@ class AeonGUI(ctk.CTk):
             modules = self.module_manager.get_loaded_modules()
             for mod in modules:
                 self.add_module_status(mod.name, True)
-        except: pass
+        except Exception as e:
+            print(f"Error updating module list: {e}")
 
     def add_module_status(self, name, active):
         row = ctk.CTkFrame(self.scroll_modules, fg_color="transparent")
@@ -252,7 +262,8 @@ class AeonGUI(ctk.CTk):
                 cpu = psutil.cpu_percent(interval=1)
                 ram = psutil.virtual_memory().percent
                 self.after(0, self.update_vitals, cpu, ram)
-            except: pass
+            except Exception as e:
+                print(f"Error in vitals loop: {e}")
 
     def update_vitals(self, cpu, ram):
         self.bar_cpu.set(cpu / 100)

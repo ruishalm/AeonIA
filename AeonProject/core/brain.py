@@ -5,14 +5,12 @@ from PIL import Image
 from io import BytesIO
 import datetime
 
-# Suposição: um logger será passado pelo core_context
 def log_display(msg):
     print(f"[BRAIN] {msg}")
 
 class Brain:
     """
-    O cérebro do Aeon. Gerencia a interação com os modelos de linguagem
-    grandes (LLMs), tanto na nuvem (Groq) quanto localmente (Ollama).
+    O cérebro do Aeon. Gerencia a interação com os modelos de linguagem.
     """
     def __init__(self, config: dict, installer):
         self.config = config
@@ -25,7 +23,7 @@ class Brain:
         
         # Conecta aos serviços no boot
         self.reconectar()
-        # Verificar Ollama apenas se installer foi fornecido
+        
         if self.installer:
             self.local_ready = self.installer.verificar_ollama()
         else:
@@ -36,23 +34,28 @@ class Brain:
         if not self.groq_api_key:
             log_display("Chave da API Groq não encontrada.")
             self.online = False
-            return "Sem chave API."
+            return False
         
         try: 
             self.client = Groq(api_key=self.groq_api_key)
+            # Teste rápido de conexão
             self.client.models.list()
             self.online = True
             log_display("Conexão com a Nuvem (Groq) estabelecida.")
-            return "Conexão Nuvem OK."
+            return True
         except Exception as e:
             self.online = False
             log_display(f"Falha ao conectar na Nuvem: {e}")
-            return f"Falha na conexão: {e}"
+            return False
 
     def pensar(self, prompt: str, historico_txt: str = "", user_prefs: dict = {}) -> str:
         """
-        Processa um prompt de texto, usando o melhor modelo de linguagem disponível.
+        Processa um prompt com Auto-Healing de conexão.
         """
+        # CORREÇÃO: Se estiver marcado como offline, tenta reconectar uma vez antes de desistir
+        if not self.online and self.groq_api_key:
+            self.reconectar()
+
         prefs_str = "\n".join([f"- {k}: {v}" for k, v in user_prefs.items()])
         
         system_prompt = f"""Você é Aeon, um assistente focado em respostas precisas.
@@ -61,12 +64,6 @@ Responda SEMPRE em Português do Brasil, de forma concisa.
 
 CONTEXTO DE CONVERSAS ANTERIORES:
 {historico_txt}
-
-REGRAS IMPORTANTES:
-1. Se o usuário perguntar sobre algo dito ANTES (ex: "o que eu disse?"), consulte o contexto acima
-2. Use informações das conversas anteriores para responder com coerência
-3. Se referenciarem algo anterior, mencione que você lembra
-4. Se não souber, admita
 
 Preferências do usuário:
 {prefs_str}"""
@@ -85,8 +82,8 @@ Preferências do usuário:
                 )
                 return comp.choices[0].message.content
             except Exception as e:
-                log_display(f"ERRO GROQ: {e}")
-                self.online = False
+                log_display(f"ERRO GROQ (Caindo para local): {e}")
+                self.online = False # Marca como offline para forçar reconexão futura
 
         # Prioridade 2: Local (Ollama)
         if self.local_ready:
@@ -103,12 +100,15 @@ Preferências do usuário:
             except Exception as e:
                 log_display(f"ERRO Ollama: {e}")
         
-        return "Desculpe, estou sem conexão e sem um cérebro local funcional. Diga 'instalar offline' para tentar configurar um."
+        return "Desculpe, estou sem conexão e sem um cérebro local funcional."
 
     def ver(self, raw_image_bytes: bytes) -> str:
         """
-        Processa uma imagem, usando o melhor modelo de visão disponível.
+        Processa uma imagem.
         """
+        if not self.online and self.groq_api_key:
+            self.reconectar()
+
         try:
             pil_img = Image.open(BytesIO(raw_image_bytes))
             pil_img.thumbnail((1024, 1024))
@@ -118,7 +118,6 @@ Preferências do usuário:
         except:
             optimized_bytes = raw_image_bytes
 
-        # Prioridade 1: Nuvem (Groq)
         if self.client and self.online:
             try:
                 log_display("Analisando imagem com Groq Vision...")
@@ -129,25 +128,21 @@ Preferências do usuário:
                         {"type": "text", "text": "Descreva esta imagem em Português do Brasil de forma concisa."},
                         {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
                     ]}],
-                    temperature=0.1,
-                    max_tokens=300
+                    temperature=0.1, max_tokens=300
                 )
                 return comp.choices[0].message.content
             except Exception as e:
                 log_display(f"Erro Vision Cloud: {e}")
+                self.online = False
         
-        # Prioridade 2: Local (Ollama)
         if self.local_ready:
             log_display("Analisando imagem com Moondream Local...")
             try:
                 res = ollama.chat(
                     model=self.config.get("model_vis_local", "moondream"),
-                    messages=[
-                        {'role': 'user', 'content': 'Descreva esta imagem.', 'images': [raw_image_bytes]}
-                    ]
+                    messages=[{'role': 'user', 'content': 'Descreva esta imagem.', 'images': [raw_image_bytes]}]
                 )
-                # Usa o 'pensar' para traduzir/contextualizar se necessário
-                return self.pensar(f"Traduza e descreva de forma natural a seguinte análise de imagem: {res['message']['content']}", "")
+                return self.pensar(f"Traduza: {res['message']['content']}", "")
             except Exception as e:
                 log_display(f"Erro Vision Local: {e}")
             

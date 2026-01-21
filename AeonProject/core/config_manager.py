@@ -1,5 +1,5 @@
 import json
-import os
+from pathlib import Path
 
 class ConfigManager:
     """
@@ -7,24 +7,26 @@ class ConfigManager:
     e dados persistentes do Aeon, como sistema, tarefas e memória.
     """
     def __init__(self, storage_path="AeonProject/bagagem"):
-        self.storage_path = storage_path
-        os.makedirs(self.storage_path, exist_ok=True)
+        self.storage_path = Path(storage_path)
+        self.storage_path.mkdir(parents=True, exist_ok=True)
         
-        self.sys_path = os.path.join(self.storage_path, "system.json")
-        self.tasks_path = os.path.join(self.storage_path, "tasks.json")
-        self.mem_path = os.path.join(self.storage_path, "memoria.json")
-        self.history_path = os.path.join(self.storage_path, "historico.json")
+        self.sys_path = self.storage_path / "system.json"
+        self.tasks_path = self.storage_path / "tasks.json"
+        self.mem_path = self.storage_path / "memoria.json"
+        self.history_path = self.storage_path / "historico.json"
 
         self.system_data = self._load_json(self.sys_path, default={"apps": {}, "routines": {}, "triggers": [], "themes": {}})
         self.tasks = self._load_json(self.tasks_path, default=[])
         self.memory = self._load_json(self.mem_path, default=[])
         self.history = self._load_json(self.history_path, default={"conversations": [], "last_context": ""})
         
-        # --- CORREÇÃO: Alias para compatibilidade com main.py ---
+        # Alias para compatibilidade com componentes legados (como Brain)
+        # que esperam um dicionário de configuração direto, em vez de usar
+        # os métodos `get_system_data`. Idealmente, seria refatorado no futuro.
         self.config = self.system_data
 
     def _load_json(self, file_path, default=None):
-        if os.path.exists(file_path):
+        if file_path.exists():
             with open(file_path, 'r', encoding='utf-8') as f:
                 try:
                     return json.load(f)
