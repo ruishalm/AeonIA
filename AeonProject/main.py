@@ -39,16 +39,18 @@ class AeonGUI(ctk.CTk):
         # 1. INICIALIZAÇÃO DO CORE
         self.config_manager = ConfigManager()
         
-        # CORREÇÃO AQUI: Passamos a config para o IOHandler e None para o Installer
-        self.io_handler = IOHandler(self.config_manager.config, None)
+        # Proteção: Se config falhar, passa dict vazio
+        cfg = getattr(self.config_manager, 'config', {})
+        self.io_handler = IOHandler(cfg, None)
         
-        self.brain = Brain(self.config_manager.config, None)
+        self.brain = Brain(cfg, None)
         self.context_manager = ContextManager() 
         
-        # Pacote de Contexto Global (o que os módulos recebem)
+        # CORREÇÃO AQUI: Padronização das chaves do Contexto
+        # Os nomes das chaves devem bater com self.dependencies dos módulos
         self.core_context = {
-            "config": self.config_manager,
-            "io": self.io_handler,
+            "config_manager": self.config_manager, # Era 'config', mudou para 'config_manager'
+            "io_handler": self.io_handler,         # Era 'io', mudou para 'io_handler'
             "brain": self.brain,
             "context": self.context_manager,
             "gui": self
@@ -56,7 +58,6 @@ class AeonGUI(ctk.CTk):
 
         # Carrega Módulos
         self.module_manager = ModuleManager(self.core_context)
-        # Injeta o module_manager no contexto
         self.core_context["module_manager"] = self.module_manager
         
         self.module_manager.load_modules()
@@ -82,59 +83,85 @@ class AeonGUI(ctk.CTk):
         threading.Thread(target=self.loop_vitals, daemon=True).start()
         
         # Mensagem Inicial
-        self.add_message("Sistema Online. V80 Operacional.", "SISTEMA")
+        self.add_message("Sistema Online. V80 Estabilizada.", "SISTEMA")
         self.update_module_list()
 
     # ==========================================================================
     # PAINEL ESQUERDO: SYSTEM DECK
     # ==========================================================================
+    # No main.py, substitua o método setup_left_panel por este:
+    
     def setup_left_panel(self):
         self.frame_left = ctk.CTkFrame(self, fg_color=C["panel_bg"], corner_radius=0)
         self.frame_left.grid(row=0, column=0, sticky="nsew", padx=(0,1), pady=0)
         
-        ctk.CTkLabel(self.frame_left, text="SYSTEM VITALS", font=("Consolas", 14, "bold"), text_color=C["text_dim"]).pack(pady=(20, 10), padx=20, anchor="w")
+        # --- CABEÇALHO ---
+        ctk.CTkLabel(self.frame_left, text="SYSTEM STATUS", font=("Consolas", 14, "bold"), text_color=C["text_dim"]).pack(pady=(20, 15), padx=20, anchor="w")
 
+        # --- LEDS DE STATUS (O Retorno) ---
+        self.status_frame = ctk.CTkFrame(self.frame_left, fg_color="transparent")
+        self.status_frame.pack(fill="x", padx=20, pady=(0, 20))
+        
+        # LED Online
+        self.led_online = self._create_led(self.status_frame, "NUVEM (GROQ)", C["accent_alert"]) # Começa vermelho
+        self.led_online.pack(side="top", fill="x", pady=2)
+        
+        # LED Local
+        self.led_local = self._create_led(self.status_frame, "NEURAL (LOCAL)", C["accent_alert"])
+        self.led_local.pack(side="top", fill="x", pady=2)
+
+        # --- VITALS ---
+        ctk.CTkFrame(self.frame_left, height=2, fg_color="#30363d").pack(fill="x", padx=20, pady=10)
+        
         self.lbl_cpu = ctk.CTkLabel(self.frame_left, text="CPU: 0%", font=("Consolas", 12), text_color=C["text_main"])
         self.lbl_cpu.pack(padx=20, anchor="w")
         self.bar_cpu = ctk.CTkProgressBar(self.frame_left, progress_color=C["accent_secondary"])
         self.bar_cpu.pack(padx=20, pady=(0, 15), fill="x")
-        self.bar_cpu.set(0)
-
+        
         self.lbl_ram = ctk.CTkLabel(self.frame_left, text="RAM: 0%", font=("Consolas", 12), text_color=C["text_main"])
         self.lbl_ram.pack(padx=20, anchor="w")
         self.bar_ram = ctk.CTkProgressBar(self.frame_left, progress_color=C["accent_primary"])
         self.bar_ram.pack(padx=20, pady=(0, 20), fill="x")
-        self.bar_ram.set(0)
 
+        # --- MODULOS ---
         ctk.CTkFrame(self.frame_left, height=2, fg_color="#30363d").pack(fill="x", padx=20, pady=10)
-
         ctk.CTkLabel(self.frame_left, text="ACTIVE MODULES", font=("Consolas", 14, "bold"), text_color=C["text_dim"]).pack(pady=10, padx=20, anchor="w")
         
         self.scroll_modules = ctk.CTkScrollableFrame(self.frame_left, fg_color="transparent")
         self.scroll_modules.pack(fill="both", expand=True, padx=10, pady=10)
 
-    def update_module_list(self):
-        for widget in self.scroll_modules.winfo_children():
-            widget.destroy()
+    def _create_led(self, parent, text, color):
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        canvas = ctk.CTkCanvas(frame, width=12, height=12, bg=C["panel_bg"], highlightthickness=0)
+        canvas.pack(side="left", padx=(0, 10))
+        # Guarda referencia do oval para mudar a cor depois
+        led_id = canvas.create_oval(2, 2, 10, 10, fill=color, outline="")
+        label = ctk.CTkLabel(frame, text=text, font=("Consolas", 11, "bold"), text_color=C["text_dim"])
+        label.pack(side="left")
         
-        try:
-            modules = self.module_manager.get_loaded_modules()
-            for mod in modules:
-                self.add_module_status(mod.name, True)
-        except: pass
+        # Truque pythonico: guardamos os widgets dentro do frame para acessar depois
+        frame.canvas = canvas
+        frame.led = led_id
+        return frame
 
-    def add_module_status(self, name, active):
-        row = ctk.CTkFrame(self.scroll_modules, fg_color="transparent")
-        row.pack(fill="x", pady=2)
-        color = C["accent_secondary"] if active else C["accent_alert"]
-        status_text = "ONLINE" if active else "OFFLINE"
-        
-        canvas = ctk.CTkCanvas(row, width=10, height=10, bg=C["panel_bg"], highlightthickness=0)
-        canvas.pack(side="left", padx=(5,10))
-        canvas.create_oval(1, 1, 9, 9, fill=color, outline="")
-        
-        ctk.CTkLabel(row, text=name, font=("Consolas", 12), text_color=C["text_main"]).pack(side="left")
-        ctk.CTkLabel(row, text=status_text, font=("Consolas", 10), text_color=C["text_dim"]).pack(side="right", padx=5)
+    # Adicione também no loop_vitals para atualizar as cores:
+    def update_vitals(self, cpu, ram):
+        # ... (código anterior de cpu/ram) ...
+        self.bar_cpu.set(cpu / 100)
+        self.lbl_cpu.configure(text=f"CPU: {cpu}%")
+        self.bar_ram.set(ram / 100)
+        self.lbl_ram.configure(text=f"RAM: {ram}%")
+
+        # Atualiza LEDs baseado no Cérebro
+        if self.brain.online:
+            self.led_online.canvas.itemconfig(self.led_online.led, fill=C["accent_primary"]) # Azul
+        else:
+            self.led_online.canvas.itemconfig(self.led_online.led, fill=C["accent_alert"]) # Vermelho
+            
+        if self.brain.local_ready:
+            self.led_local.canvas.itemconfig(self.led_local.led, fill=C["accent_secondary"]) # Verde
+        else:
+            self.led_local.canvas.itemconfig(self.led_local.led, fill=C["accent_alert"])
 
     # ==========================================================================
     # PAINEL CENTRAL: CHAT
@@ -198,7 +225,13 @@ class AeonGUI(ctk.CTk):
         except Exception as e:
             self.after(0, lambda: self.add_message(f"Erro Crítico: {e}", "SISTEMA"))
 
+    # No main.py
     def toggle_mic(self):
+        # Roteia o comando direto para o módulo de audição
+        # Isso simula o usuário digitando "ativar escuta"
+        threading.Thread(target=self.process_in_background, args=("ativar escuta",), daemon=True).start()
+        # Visual: muda a cor do botão
+        self.btn_mic.configure(fg_color=C["accent_secondary"])
         print("Alternar microfone...")
 
     # ==========================================================================

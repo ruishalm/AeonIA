@@ -19,6 +19,9 @@ class ConfigManager:
         self.tasks = self._load_json(self.tasks_path, default=[])
         self.memory = self._load_json(self.mem_path, default=[])
         self.history = self._load_json(self.history_path, default={"conversations": [], "last_context": ""})
+        
+        # --- CORREÇÃO: Alias para compatibilidade com main.py ---
+        self.config = self.system_data
 
     def _load_json(self, file_path, default=None):
         if os.path.exists(file_path):
@@ -108,4 +111,3 @@ class ConfigManager:
         """Salva contexto atual para próximas sessões"""
         self.history["last_context"] = context
         self._save_json(self.history_path, self.history)
-
