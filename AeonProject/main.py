@@ -46,11 +46,10 @@ class AeonGUI(ctk.CTk):
         self.brain = Brain(cfg, None)
         self.context_manager = ContextManager() 
         
-        # CORREÇÃO AQUI: Padronização das chaves do Contexto
-        # Os nomes das chaves devem bater com self.dependencies dos módulos
+        # Padronização das chaves do Contexto
         self.core_context = {
-            "config_manager": self.config_manager, # Era 'config', mudou para 'config_manager'
-            "io_handler": self.io_handler,         # Era 'io', mudou para 'io_handler'
+            "config_manager": self.config_manager,
+            "io_handler": self.io_handler,
             "brain": self.brain,
             "context": self.context_manager,
             "gui": self
@@ -87,10 +86,8 @@ class AeonGUI(ctk.CTk):
         self.update_module_list()
 
     # ==========================================================================
-    # PAINEL ESQUERDO: SYSTEM DECK
+    # PAINEL ESQUERDO: SYSTEM DECK (Com LEDs)
     # ==========================================================================
-    # No main.py, substitua o método setup_left_panel por este:
-    
     def setup_left_panel(self):
         self.frame_left = ctk.CTkFrame(self, fg_color=C["panel_bg"], corner_radius=0)
         self.frame_left.grid(row=0, column=0, sticky="nsew", padx=(0,1), pady=0)
@@ -98,7 +95,7 @@ class AeonGUI(ctk.CTk):
         # --- CABEÇALHO ---
         ctk.CTkLabel(self.frame_left, text="SYSTEM STATUS", font=("Consolas", 14, "bold"), text_color=C["text_dim"]).pack(pady=(20, 15), padx=20, anchor="w")
 
-        # --- LEDS DE STATUS (O Retorno) ---
+        # --- LEDS DE STATUS ---
         self.status_frame = ctk.CTkFrame(self.frame_left, fg_color="transparent")
         self.status_frame.pack(fill="x", padx=20, pady=(0, 20))
         
@@ -144,24 +141,28 @@ class AeonGUI(ctk.CTk):
         frame.led = led_id
         return frame
 
-    # Adicione também no loop_vitals para atualizar as cores:
-    def update_vitals(self, cpu, ram):
-        # ... (código anterior de cpu/ram) ...
-        self.bar_cpu.set(cpu / 100)
-        self.lbl_cpu.configure(text=f"CPU: {cpu}%")
-        self.bar_ram.set(ram / 100)
-        self.lbl_ram.configure(text=f"RAM: {ram}%")
+    def update_module_list(self):
+        for widget in self.scroll_modules.winfo_children():
+            widget.destroy()
+        
+        try:
+            modules = self.module_manager.get_loaded_modules()
+            for mod in modules:
+                self.add_module_status(mod.name, True)
+        except: pass
 
-        # Atualiza LEDs baseado no Cérebro
-        if self.brain.online:
-            self.led_online.canvas.itemconfig(self.led_online.led, fill=C["accent_primary"]) # Azul
-        else:
-            self.led_online.canvas.itemconfig(self.led_online.led, fill=C["accent_alert"]) # Vermelho
-            
-        if self.brain.local_ready:
-            self.led_local.canvas.itemconfig(self.led_local.led, fill=C["accent_secondary"]) # Verde
-        else:
-            self.led_local.canvas.itemconfig(self.led_local.led, fill=C["accent_alert"])
+    def add_module_status(self, name, active):
+        row = ctk.CTkFrame(self.scroll_modules, fg_color="transparent")
+        row.pack(fill="x", pady=2)
+        color = C["accent_secondary"] if active else C["accent_alert"]
+        status_text = "ONLINE" if active else "OFFLINE"
+        
+        canvas = ctk.CTkCanvas(row, width=10, height=10, bg=C["panel_bg"], highlightthickness=0)
+        canvas.pack(side="left", padx=(5,10))
+        canvas.create_oval(1, 1, 9, 9, fill=color, outline="")
+        
+        ctk.CTkLabel(row, text=name, font=("Consolas", 12), text_color=C["text_main"]).pack(side="left")
+        ctk.CTkLabel(row, text=status_text, font=("Consolas", 10), text_color=C["text_dim"]).pack(side="right", padx=5)
 
     # ==========================================================================
     # PAINEL CENTRAL: CHAT
@@ -196,7 +197,6 @@ class AeonGUI(ctk.CTk):
 
         ctk.CTkLabel(msg_frame, text=sender, font=("Consolas", 10, "bold"), text_color=C["text_dim"]).pack(anchor=align, padx=5)
 
-        # Simples tratamento de markdown
         parts = text.split("```")
         for i, part in enumerate(parts):
             if not part.strip(): continue
@@ -225,14 +225,12 @@ class AeonGUI(ctk.CTk):
         except Exception as e:
             self.after(0, lambda: self.add_message(f"Erro Crítico: {e}", "SISTEMA"))
 
-    # No main.py
     def toggle_mic(self):
         # Roteia o comando direto para o módulo de audição
         # Isso simula o usuário digitando "ativar escuta"
         threading.Thread(target=self.process_in_background, args=("ativar escuta",), daemon=True).start()
         # Visual: muda a cor do botão
         self.btn_mic.configure(fg_color=C["accent_secondary"])
-        print("Alternar microfone...")
 
     # ==========================================================================
     # PAINEL DIREITO: WORKSPACE
@@ -261,6 +259,18 @@ class AeonGUI(ctk.CTk):
         self.lbl_cpu.configure(text=f"CPU: {cpu}%")
         self.bar_ram.set(ram / 100)
         self.lbl_ram.configure(text=f"RAM: {ram}%")
+        
+        # Atualiza LEDs baseado no Cérebro (Evita erro se brain não estiver inicializado)
+        if hasattr(self, 'brain') and self.brain:
+            if self.brain.online:
+                self.led_online.canvas.itemconfig(self.led_online.led, fill=C["accent_primary"]) # Azul
+            else:
+                self.led_online.canvas.itemconfig(self.led_online.led, fill=C["accent_alert"]) # Vermelho
+                
+            if self.brain.local_ready:
+                self.led_local.canvas.itemconfig(self.led_local.led, fill=C["accent_secondary"]) # Verde
+            else:
+                self.led_local.canvas.itemconfig(self.led_local.led, fill=C["accent_alert"])
 
 if __name__ == "__main__":
     app = AeonGUI()
