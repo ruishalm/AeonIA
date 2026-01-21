@@ -13,24 +13,35 @@ class VisaoModule(AeonModule):
         super().__init__(core_context)
         self.name = "Visao"
         self.triggers = ["veja isso", "leia a tela", "o que está na tela", "analise a imagem"]
+        # Dependências opcionais não precisam estar listadas aqui se tratamos no código
         self.dependencies = ["brain", "context"]
+
+    @property
+    def metadata(self) -> dict:
+        return {
+            "version": "1.1.0",
+            "author": "Aeon Core",
+            "description": "Captura e analisa o conteúdo da tela."
+        }
 
     def check_dependencies(self):
         # Verifica se as libs externas estão instaladas
         if not VISAO_AVAILABLE:
             print("[VISAO] Erro: 'pyautogui' não instalado. Rode: pip install pyautogui")
-            return False
+            # Retorna True para não bloquear o módulo de carregar, 
+            # mas ele vai avisar ao usuário se for chamado.
+            return True 
         return super().check_dependencies()
 
     def process(self, command: str) -> str:
         brain = self.core_context.get("brain")
         ctx = self.core_context.get("context")
 
-        if not brain:
-            return "Erro: Cérebro não encontrado."
-
         if not VISAO_AVAILABLE:
-            return "Erro: Módulo de visão requer 'pyautogui' instalado."
+            return "Minha visão está desativada. Instale a biblioteca 'pyautogui' para corrigir."
+
+        if not brain:
+            return "Cérebro não encontrado."
 
         try:
             # 1. Captura a tela
@@ -44,9 +55,9 @@ class VisaoModule(AeonModule):
             # 3. Envia para o Cérebro (Vision Model)
             analise = brain.ver(img_bytes)
 
-            # 4. SALVA NO CONTEXTO (O Pulo do Gato)
+            # 4. SALVA NO CONTEXTO
             if ctx:
-                ctx.set("vision_last_result", analise, ttl=600) # Lembra por 10 minutos
+                ctx.set("vision_last_result", analise, ttl=600)
                 print(f"[VISAO] Contexto salvo: {analise[:50]}...")
 
             return f"Analisei sua tela: {analise}"
