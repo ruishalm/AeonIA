@@ -8,125 +8,82 @@ class SingularityModule(AeonModule):
     def __init__(self, core_context):
         super().__init__(core_context)
         self.name = "Singularidade"
-        self.triggers = ["iniciar singularidade", "criar nova habilidade", "aprender função"]
+        self.triggers = ["iniciar singularidade", "criar nova habilidade"]
         self.dependencies = ["brain"]
-        
         self.step = 0 
-        self.temp_data = {"name": "", "triggers": "", "logic": ""}
+        self.temp_data = {}
 
     def process(self, command: str) -> str:
         mm = self.core_context.get("module_manager")
         brain = self.core_context.get("brain")
-        ctx = self.core_context.get("context") # Acesso ao contexto
+        ctx = self.core_context.get("context")
 
-        # --- ESTADO 0: START ---
         if self.step == 0:
             if mm: mm.lock_focus(self)
             self.step = 1
-            return "Singularidade ativa. Qual o nome técnico do novo módulo? (apenas letras)"
+            return "Singularidade ativa. Nome do módulo? (sem espaços)"
 
-        # --- ESTADO 1: NOME ---
         if self.step == 1:
-            clean_name = re.sub(r'[^a-zA-Z0-9_]', '', command.strip().lower())
-            if not clean_name: return "Nome inválido. Tente novamente."
-            self.temp_data["name"] = clean_name
+            self.temp_data["name"] = re.sub(r'[^a-zA-Z0-9_]', '', command.strip().lower())
             self.step = 2
-            return f"Nome '{clean_name}' registrado. Quais os gatilhos? (separe por vírgula)"
+            return f"Nome '{self.temp_data['name']}' ok. Gatilhos? (separados por vírgula)"
 
-        # --- ESTADO 2: TRIGGERS ---
         if self.step == 2:
             self.temp_data["triggers"] = str([t.strip() for t in command.split(',')])
             self.step = 3
-            return "Ok. Descreva a LÓGICA. O que ele deve fazer?"
+            return "Descreva a LÓGICA."
 
-        # --- ESTADO 3: LÓGICA (COM CONTEXTO VISUAL) ---
         if self.step == 3:
-            user_logic = command
-            
-            # MAGIA DO CONTEXTO: Verifica se a visão viu algo recentemente
             contexto_extra = ""
-            if ctx:
-                last_vision = ctx.get("vision_last_result")
-                if last_vision:
-                    contexto_extra = f"\n[CONTEXTO DE TELA]: O usuário viu recentemente: '{last_vision}'. USE ISSO SE FOR RELEVANTE PARA A LÓGICA."
-                    print("[SINGULARIDADE] Contexto visual injetado no prompt.")
+            if ctx and ctx.get("vision_last_result"):
+                contexto_extra = f"\n[CONTEXTO VISUAL]: {ctx.get('vision_last_result')}"
 
-            self.temp_data["logic"] = user_logic + contexto_extra
+            self.temp_data["logic"] = command + contexto_extra
             
-            # Gera código
             prompt = self._build_prompt()
             try:
-                # Chama o Brain
                 resp = brain.pensar(prompt, "")
-                
-                # Extrai e Valida
                 code = self._extract_code(resp)
-                if not code: raise Exception("Cérebro não gerou código válido")
                 
-                syntax_err = self._validate_syntax(code)
-                if syntax_err: raise Exception(f"Erro de sintaxe gerado: {syntax_err}")
-                
-                # Salva
                 if self._save_module(code):
                     if mm: 
                         mm.scan_new_modules()
                         mm.release_focus()
                     self.step = 0
-                    return f"Módulo '{self.temp_data['name']}' criado e assimilado com sucesso."
-                
+                    return f"Módulo '{self.temp_data['name']}' criado."
             except Exception as e:
-                self._reset_state(mm)
-                return f"Falha na Singularidade: {str(e)}"
-
+                if mm: mm.release_focus()
+                self.step = 0
+                return f"Erro: {e}"
         return ""
-
-    def _reset_state(self, mm):
-        self.step = 0
-        self.temp_data = {}
-        if mm: mm.release_focus()
-
-    def _validate_syntax(self, code):
-        try:
-            ast.parse(code)
-            return None
-        except SyntaxError as e:
-            return str(e)
 
     def _extract_code(self, text):
         match = re.search(r'```python(.*?)```', text, re.DOTALL)
-        if match: return match.group(1).strip()
-        match = re.search(r'```(.*?)```', text, re.DOTALL)
-        if match: return match.group(1).strip()
-        return None
+        return match.group(1).strip() if match else None
 
     def _save_module(self, code):
         try:
             name = self.temp_data["name"]
-            # Caminho robusto
             base = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", name))
             os.makedirs(base, exist_ok=True)
-            
             with open(os.path.join(base, "__init__.py"), "w", encoding='utf-8') as f: f.write("")
             with open(os.path.join(base, f"{name}_mod.py"), "w", encoding='utf-8') as f: f.write(code)
             return True
         except: return False
 
     def _build_prompt(self):
-        # CORREÇÃO: Adicionado coding utf-8 e reforço de sintaxe
+        # TEMPLATE V80 com UTF-8
         return textwrap.dedent(f"""
-            ATUE COMO ENGENHEIRO PYTHON SÊNIOR.
-            Tarefa: Criar módulo para sistema Aeon.
+            ATUE COMO ENGENHEIRO PYTHON.
+            Tarefa: Criar módulo Aeon.
+            Nome: {self.temp_data['name']}
+            Gatilhos: {self.temp_data['triggers']}
+            Lógica: {self.temp_data['logic']}
             
-            DADOS:
-            - Nome: {self.temp_data['name']}
-            - Gatilhos: {self.temp_data['triggers']}
-            - Lógica: {self.temp_data['logic']}
-            
-            TEMPLATE OBRIGATÓRIO (Use Exatamente este formato):
+            TEMPLATE OBRIGATÓRIO:
             ```python
             # -*- coding: utf-8 -*-
             from modules.base_module import AeonModule
-            # outros imports padrão
             
             class {self.temp_data['name'].capitalize()}Module(AeonModule):
                 def __init__(self, core_context):
@@ -135,8 +92,8 @@ class SingularityModule(AeonModule):
                     self.triggers = {self.temp_data['triggers']}
                 
                 def process(self, command):
-                    # Implementação
+                    # Implementação aqui
                     return "resposta"
             ```
-            Retorne APENAS o código dentro de markdown.
+            Retorne APENAS o código.
         """)
