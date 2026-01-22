@@ -1,6 +1,4 @@
-"""
-DevFactory Module - Fábrica de Software Inteligente
-"""
+"DevFactory Module - Fábrica de Software Inteligente"
 
 import os
 import json
@@ -12,9 +10,8 @@ from modules.base_module import AeonModule
 
 class DevFactory(AeonModule):
     """
-    Módulo que gera projetos de software completos.
+    Módulo que gera projetos de software completos através de um processo interativo e agente.
     """
-    
     def __init__(self, core_context):
         super().__init__(core_context)
         self.name = "DevFactory"
@@ -31,12 +28,43 @@ class DevFactory(AeonModule):
         self.projects_log = os.path.join(self.workspace_dir, "projects.json")
         self._load_projects_log()
 
+        # State for the new interview and agentic process
+        self.is_interviewing = False
+        self.interview_questions = []
+        self.gathered_requirements = {}
+        self.current_question_key = None
+
+        # --- FORMULÁRIOS DINÂMICOS E SUCINTOS ---
+        self.interview_templates = {
+            "site": [
+                {"key": "paginas", "pergunta": "Página única ou múltiplas páginas?"},
+                {"key": "contato", "pergunta": "Incluir formulário de contato?"},
+                {"key": "database", "pergunta": "Necessita de banco de dados?"},
+                {"key": "linguagem", "pergunta": "Linguagem do backend? (Python, Node.js, ou nenhum)"},
+                {"key": "requisitos", "pergunta": "Descreva o objetivo e o estilo do site."}
+            ],
+            "api": [
+                {"key": "linguagem", "pergunta": "Qual framework? (FastAPI, Flask, etc.)"},
+                {"key": "autenticacao", "pergunta": "Precisará de autenticação?"},
+                {"key": "database", "pergunta": "Qual banco de dados?"},
+                {"key": "requisitos", "pergunta": "Quais os endpoints principais?"},
+            ],
+            "script": [
+                {"key": "linguagem", "pergunta": "Qual a linguagem do script?"},
+                {"key": "requisitos", "pergunta": "O que o script deve fazer?"},
+            ],
+            "default": [
+                {"key": "linguagem", "pergunta": "Qual a linguagem principal?"},
+                {"key": "requisitos", "pergunta": "Descreva o que o projeto deve fazer."}
+            ]
+        }
+
     @property
     def metadata(self) -> dict:
         return {
-            "version": "1.1.0",
+            "version": "2.2.0",
             "author": "Aeon DevFactory",
-            "description": "Gera projetos de software completos usando IA"
+            "description": "Gera projetos de software completos através de um processo interativo, agente e sucinto."
         }
 
     def on_load(self) -> bool:
@@ -58,7 +86,8 @@ class DevFactory(AeonModule):
             try:
                 with open(self.projects_log, 'r', encoding='utf-8') as f:
                     self.projects = json.load(f)
-            except:
+            except Exception as e:
+                print(f"[DevFactory] Erro ao carregar projects.json: {e}. Um novo arquivo será criado.")
                 self.projects = []
         else:
             self.projects = []
@@ -70,143 +99,120 @@ class DevFactory(AeonModule):
         except Exception as e:
             print(f"[DevFactory] Erro ao salvar projects.json: {e}")
 
+    def _start_interview(self, initial_prompt=""):
+        """Inicia o processo de entrevista para coletar requisitos."""
+        self.is_interviewing = True
+        self.gathered_requirements = {"prompt_inicial": initial_prompt}
+        self.current_question_key = "tipo_projeto"
+        return "Qual o tipo de projeto? (site, api, script)"
+
     def process(self, command: str) -> str:
-        try:
+        """Processa o comando do usuário, gerenciando a entrevista e o início da criação."""
+        if self.is_interviewing:
+            self.gathered_requirements[self.current_question_key] = command
+            if self.current_question_key == "tipo_projeto":
+                project_type = command.lower()
+                self.interview_questions = self.interview_templates.get(project_type, self.interview_templates["default"]).copy()
+            
+            if self.interview_questions:
+                next_question = self.interview_questions.pop(0)
+                self.current_question_key = next_question["key"]
+                return next_question["pergunta"]
+            else:
+                self.is_interviewing = False
+                self.current_question_key = None
+                return self._start_agentic_creation()
+        else:
             project_type, requirements = self._parse_command(command)
-            
-            if not project_type:
-                return "Não entendi. Tente: 'Crie um site com animações' ou 'Gere um script Python'"
-            
-            threading.Thread(
-                target=self._create_project,
-                args=(project_type, requirements),
-                daemon=True
-            ).start()
-            
-            return f"Criando {project_type}... Aguarde."
+            if not project_type or not requirements or len(requirements) < 5:
+                return self._start_interview(initial_prompt=command)
+            else:
+                self.gathered_requirements = {"tipo_projeto": project_type, "requisitos": requirements, "linguagem": "não especificada"}
+                return self._start_agentic_creation()
+
+    def _start_agentic_creation(self) -> str:
+        """Inicia o processo de criação agente."""
+        final_objective = f"""
+        Objetivo: Criar um '{self.gathered_requirements.get('tipo_projeto', 'projeto')}'
+        Linguagem: {self.gathered_requirements.get('linguagem', 'não especificada')}
+        Requisitos: {self.gathered_requirements.get('requisitos', 'não especificados')}
+        Páginas: {self.gathered_requirements.get('paginas', 'não aplicável')}
+        Contato: {self.gathered_requirements.get('contato', 'não aplicável')}
+        Banco de Dados: {self.gathered_requirements.get('database', 'não aplicável')}
+        Autenticação: {self.gathered_requirements.get('autenticacao', 'não aplicável')}
+        Endpoints: {self.gathered_requirements.get('endpoints', 'não aplicável')}
+        """
         
-        except Exception as e:
-            return f"Erro ao criar projeto: {str(e)}"
+        self.is_interviewing = False
+        self.gathered_requirements = {}
+
+        threading.Thread(
+            target=self._agent_loop,
+            args=(final_objective,),
+            daemon=True
+        ).start()
+
+        return f"Ok. Iniciando criação. Acompanhe."
+
+    def _agent_loop(self, objective: str):
+        """O loop principal do agente de desenvolvimento."""
+        io_handler = self.core_context.get("io_handler")
+        brain = self.core_context.get("brain")
+        gui = self.core_context.get("gui")
+
+        if not brain or not gui:
+            if io_handler: io_handler.falar("Erro: Componentes do core ausentes.")
+            return
+
+        plan_prompt = f"Crie um plano conciso para o seguinte objetivo:\n{objective}"
+        initial_plan = brain.pensar(prompt=plan_prompt, historico_txt="", user_prefs={})
+        
+        gui.after(0, lambda: gui.add_message(f"**Plano:**\n{initial_plan}", "DevFactory"))
+        if io_handler: io_handler.falar("Plano criado. Verifique a interface.")
+        
+        gui.after(1, lambda: gui.add_message(f"Modo agente em desenvolvimento.", "DevFactory"))
+        gui.after(5, lambda: gui.refresh_workspace_view())
 
     def _parse_command(self, command: str) -> tuple:
         cmd_lower = command.lower()
         
-        if "site" in cmd_lower or "html" in cmd_lower or "web" in cmd_lower:
+        # Encontra o tipo de projeto de forma mais robusta
+        if any(keyword in cmd_lower for keyword in ["site", "html", "web"]):
             project_type = "site"
-        elif "script" in cmd_lower or "python" in cmd_lower or "py" in cmd_lower:
+        elif any(keyword in cmd_lower for keyword in ["script", "python", "py"]):
             project_type = "script"
-        elif "calculadora" in cmd_lower or "calculator" in cmd_lower:
+        elif any(keyword in cmd_lower for keyword in ["calculadora", "calculator"]):
             project_type = "calculator"
-        elif "api" in cmd_lower or "api" in cmd_lower:
+        elif "api" in cmd_lower:
             project_type = "api"
-        elif "app" in cmd_lower or "aplicacao" in cmd_lower:
+        elif any(keyword in cmd_lower for keyword in ["app", "aplicacao", "aplicativo"]):
             project_type = "app"
         else:
             project_type = None
         
-        requirements = command.replace(f"crie um {project_type}", "").strip() \
-                              .replace(f"gere um {project_type}", "").strip() \
-                              .replace(f"construa um {project_type}", "").strip()
-        
+        # Extrai os requisitos de forma mais limpa
+        if project_type:
+            trigger_phrases = [f"crie um {project_type}", f"gere um {project_type}", f"construa um {project_type}", "programar"]
+            for phrase in trigger_phrases:
+                if phrase in command:
+                    requirements = command.replace(phrase, "").strip()
+                    break
+            else:
+                requirements = command
+        else:
+            requirements = command
+
         if not requirements:
             requirements = f"Um {project_type} funcional e bem estruturado"
         
         return project_type, requirements
-
-    def _create_project(self, project_type: str, requirements: str):
-        try:
-            io_handler = self.core_context.get("io_handler")
-            brain = self.core_context.get("brain")
-            
-            if not brain:
-                if io_handler: io_handler.falar("Erro: Brain não disponível")
-                return
-            
-            project_name = f"{project_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            project_dir = os.path.join(self.workspace_dir, project_name)
-            os.makedirs(project_dir, exist_ok=True)
-            
-            if io_handler: io_handler.falar(f"Gerando código para {project_type}...")
-            
-            prompt = self._build_prompt(project_type, requirements)
-            code_response = brain.pensar(prompt=prompt, historico_txt="", user_prefs={})
-            
-            files_dict = self._extract_json(code_response)
-            
-            if not files_dict:
-                if io_handler: io_handler.falar("Erro ao gerar código. Resposta inválida.")
-                return
-            
-            for filename, content in files_dict.items():
-                filepath = os.path.join(project_dir, filename)
-                os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(content)
-            
-            self.projects.append({
-                "name": project_name,
-                "type": project_type,
-                "created_at": datetime.now().isoformat(),
-                "requirements": requirements,
-                "path": project_dir,
-                "files": list(files_dict.keys())
-            })
-            self._save_projects_log()
-            
-            if io_handler: io_handler.falar(f"Projeto criado em {project_dir}. Abrindo...")
-            
-            try:
-                # Tenta abrir a pasta (funciona em Windows/Linux/Mac)
-                if os.name == 'nt':
-                    os.startfile(project_dir)
-                else:
-                    subprocess.Popen(["xdg-open", project_dir])
-            except: pass
-            
-        except Exception as e:
-            print(f"[DevFactory] Erro: {e}")
-            io_handler = self.core_context.get("io_handler")
-            if io_handler: io_handler.falar(f"Erro ao criar projeto: {str(e)}")
-
-    def _build_prompt(self, project_type: str, requirements: str) -> str:
-        # CORREÇÃO: Templates agora incluem cabeçalho UTF-8 para Python
-        templates = {
-            "site": f"""You are a Senior Web Developer. Create a website: {requirements}
-OUTPUT ONLY JSON:
-{{
-  "index.html": "<!DOCTYPE html>...",
-  "style.css": "body {{...}}",
-  "script.js": "console.log('...')"
-}}""",
-            
-            "script": f"""You are a Python Expert. Create a script: {requirements}
-OUTPUT ONLY JSON:
-{{
-  "main.py": "# -*- coding: utf-8 -*-\\nimport os\\n\\n# Implementation..."
-}}""",
-            
-            "calculator": f"""Create a JS Calculator.
-OUTPUT ONLY JSON:
-{{ "index.html": "...", "style.css": "...", "script.js": "..." }}""",
-            
-            "api": f"""Create a FASTAPI/Flask API: {requirements}
-OUTPUT ONLY JSON:
-{{
-  "main.py": "# -*- coding: utf-8 -*-\\nfrom fastapi import FastAPI..."
-}}""",
-            
-            "app": f"""Create an App logic: {requirements}
-OUTPUT ONLY JSON:
-{{
-  "main.py": "# -*- coding: utf-8 -*-\\n..."
-}}"""
-        }
-        return templates.get(project_type, templates["site"])
 
     def _extract_json(self, text: str) -> dict:
         try:
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())
-        except: pass
+        except json.JSONDecodeError as e:
+            print(f"[DevFactory] Erro de decodificação de JSON: {e}")
+            print(f"[DevFactory] Resposta recebida que causou o erro: {text[:500]}...")
         return None

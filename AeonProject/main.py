@@ -3,6 +3,7 @@ import psutil
 import threading
 import sys
 import os
+import subprocess
 
 # Ajusta caminho para encontrar os módulos
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -120,7 +121,8 @@ class AeonGUI(ctk.CTk):
             modules = self.module_manager.get_loaded_modules()
             for mod in modules:
                 self.add_module_status(mod.name, True)
-        except: pass
+        except Exception as e:
+            print(f"[GUI_ERROR] Falha ao atualizar a lista de módulos: {e}")
 
     def add_module_status(self, name, active):
         row = ctk.CTkFrame(self.scroll_modules, fg_color="transparent")
@@ -152,6 +154,13 @@ class AeonGUI(ctk.CTk):
 
         self.btn_mic = ctk.CTkButton(self.input_container, text="MIC", width=60, fg_color=C["accent_primary"], font=("Consolas", 12, "bold"), command=self.toggle_mic)
         self.btn_mic.pack(side="right", padx=10)
+        
+        self.btn_shush = ctk.CTkButton(self.input_container, text="XIU", width=50, fg_color=C["accent_alert"], font=("Consolas", 12, "bold"), command=self.io_handler.calar_boca)
+        self.btn_shush.pack(side="right", padx=(0, 5))
+
+    def _prevent_typing(self, event):
+        """Impede a digitação em textboxes somente leitura."""
+        return "break"
 
     def add_message(self, text, sender="VOCÊ"):
         msg_frame = ctk.CTkFrame(self.chat_feed, fg_color="transparent")
@@ -163,13 +172,40 @@ class AeonGUI(ctk.CTk):
         parts = text.split("```")
         for i, part in enumerate(parts):
             if not part.strip(): continue
-            if i % 2 == 0:
-                ctk.CTkLabel(msg_frame, text=part.strip(), fg_color=bubble_color, corner_radius=12, font=("Roboto", 14), text_color=text_color, wraplength=450, justify="left").pack(anchor=align, pady=2, padx=5, ipady=5, ipadx=10)
-            else:
-                code_box = ctk.CTkTextbox(msg_frame, font=("Consolas", 13), fg_color=C["code_bg"], text_color="#3fb950", border_color="#30363d", border_width=1, width=480, height=min(len(part.split('\n')) * 20 + 20, 300), wrap="none")
-                code_box.insert("0.0", part.strip())
-                code_box.configure(state="disabled")
-                code_box.pack(anchor=align, pady=5, padx=5)
+            
+            is_code = i % 2 != 0
+            
+            # Usar Textbox para permitir seleção de texto
+            bg_color = C["code_bg"] if is_code else bubble_color
+            font_family = "Consolas" if is_code else "Roboto"
+            font_size = 13 if is_code else 14
+            text_color_part = "#3fb950" if is_code else text_color
+
+            textbox = ctk.CTkTextbox(msg_frame, 
+                                     font=(font_family, font_size), 
+                                     fg_color=bg_color, 
+                                     text_color=text_color_part,
+                                     border_width=1 if is_code else 0,
+                                     border_color="#30363d" if is_code else "transparent",
+                                     corner_radius=12 if not is_code else 6,
+                                     wrap="word" if not is_code else "none")
+            
+            textbox.insert("0.0", part.strip())
+            
+            # Ajustar altura do textbox ao conteúdo
+            num_lines = len(part.strip().split('\n'))
+            height = min(num_lines * (font_size + 7) + 15, 400 if is_code else 600)
+            textbox.configure(height=height)
+
+            # Prevenir edição mas permitir seleção
+            textbox.bind("<KeyPress>", self._prevent_typing)
+            textbox.bind("<KeyRelease>", self._prevent_typing)
+
+            pack_ipadx = 10 if not is_code else 0
+            pack_ipady = 5 if not is_code else 0
+            
+            textbox.pack(anchor=align, pady=2, padx=5, ipady=pack_ipady, ipadx=pack_ipadx)
+            
         self.after(100, lambda: self.chat_feed._parent_canvas.yview_moveto(1.0))
 
     def send_message_event(self, event=None):
@@ -196,19 +232,90 @@ class AeonGUI(ctk.CTk):
     def setup_right_panel(self):
         self.frame_right = ctk.CTkFrame(self, fg_color=C["panel_bg"], corner_radius=0)
         self.frame_right.grid(row=0, column=2, sticky="nsew", padx=(1,0), pady=0)
+        
         self.tabs = ctk.CTkTabview(self.frame_right, fg_color="transparent")
         self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
         self.tabs.add("WORKSPACE")
         self.tabs.add("LOGS")
 
+        # --- GAVETA DE SAÍDA (WORKSPACE) ---
+        self.workspace_frame = self.tabs.tab("WORKSPACE")
+        self.workspace_frame.grid_columnconfigure(0, weight=1)
+        self.workspace_frame.grid_rowconfigure(1, weight=1)
+
+        # Container para os botões
+        button_frame = ctk.CTkFrame(self.workspace_frame, fg_color="transparent")
+        button_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        button_frame.grid_columnconfigure(0, weight=1)
+        button_frame.grid_columnconfigure(1, weight=1)
+
+        refresh_btn = ctk.CTkButton(button_frame, text="Refresh", font=("Consolas", 12), command=self.refresh_workspace_view)
+        refresh_btn.grid(row=0, column=0, sticky="ew", padx=(0, 2))
+        
+        open_folder_btn = ctk.CTkButton(button_frame, text="Abrir Pasta", font=("Consolas", 12), command=self.open_workspace_folder)
+        open_folder_btn.grid(row=0, column=1, sticky="ew", padx=(2, 0))
+
+        self.workspace_tree_frame = ctk.CTkScrollableFrame(self.workspace_frame, fg_color="transparent")
+        self.workspace_tree_frame.grid(row=1, column=0, sticky="nsew")
+
+        self.after(200, self.refresh_workspace_view)
+
+    def open_workspace_folder(self):
+        """Abre a pasta principal do workspace no explorador de arquivos do sistema."""
+        workspace_path = "AeonProject/workspace"
+        try:
+            if os.path.exists(workspace_path):
+                if os.name == 'nt': # Windows
+                    os.startfile(workspace_path)
+                elif sys.platform == 'darwin': # macOS
+                    subprocess.Popen(['open', workspace_path])
+                else: # Linux
+                    subprocess.Popen(['xdg-open', workspace_path])
+            else:
+                print(f"[GUI_ERROR] Workspace path not found: {workspace_path}")
+        except Exception as e:
+            print(f"[GUI_ERROR] Failed to open workspace folder: {e}")
+
+
+    def refresh_workspace_view(self):
+        """Limpa e recarrega a visualização da árvore de arquivos do workspace."""
+        for widget in self.workspace_tree_frame.winfo_children():
+            widget.destroy()
+        
+        workspace_path = "AeonProject/workspace"
+        if os.path.exists(workspace_path):
+            self._populate_workspace_tree(self.workspace_tree_frame, workspace_path, indent=0)
+
+    def _populate_workspace_tree(self, parent, path, indent=0):
+        """Preenche recursivamente a árvore de arquivos do workspace."""
+        for item in sorted(os.listdir(path)):
+            item_path = os.path.join(path, item)
+            
+            # Frame para o item da árvore
+            item_frame = ctk.CTkFrame(parent, fg_color="transparent")
+            item_frame.pack(fill="x", anchor="w")
+
+            # Ícone + Nome
+            icon = "📁" if os.path.isdir(item_path) else "📄"
+            label_text = f"{' ' * indent * 2}{icon} {item}"
+            label = ctk.CTkLabel(item_frame, text=label_text, font=("Consolas", 12), text_color=C["text_main"])
+            label.pack(side="left", padx=5, pady=2)
+            
+            if os.path.isdir(item_path):
+                self._populate_workspace_tree(parent, item_path, indent + 1)
+
     # --- LOOP DE VITAIS ---
     def loop_vitals(self):
+        vitals_error_logged = False
         while self.running:
             try:
                 cpu = psutil.cpu_percent(interval=1)
                 ram = psutil.virtual_memory().percent
                 self.after(0, self.update_vitals, cpu, ram)
-            except: pass
+            except Exception as e:
+                if not vitals_error_logged:
+                    print(f"[GUI_ERROR] Falha ao ler os vitais do sistema: {e}")
+                    vitals_error_logged = True
 
     def update_vitals(self, cpu, ram):
         self.bar_cpu.set(cpu / 100)

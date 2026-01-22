@@ -19,7 +19,7 @@ class STTModule(AeonModule):
                 self.listening = True
                 self.thread = threading.Thread(target=self._listen_loop, daemon=True)
                 self.thread.start()
-                return "Microfone ativado. Pode falar."
+                return "Microfone ativado. Pode falar continuamente."
             return "Já estou ouvindo."
         
         if "parar" in command:
@@ -31,36 +31,40 @@ class STTModule(AeonModule):
     def _listen_loop(self):
         """Loop infinito que ouve, transcreve e injeta no sistema."""
         gui = self.core_context.get("gui")
-        mm = self.core_context.get("module_manager")
         
         with sr.Microphone() as source:
-            # Calibragem rápida de ruído
-            if gui: gui.add_message("Calibrando ruído...", "AUDIÇÃO")
+            # Calibragem rápida de ruído (Apenas visual)
+            if gui: gui.after(0, lambda: gui.add_message("Calibrando ruído...", "AUDIÇÃO"))
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            if gui: gui.after(0, lambda: gui.add_message("Escuta Ativa. Fale algo...", "AUDIÇÃO"))
             
             while self.listening:
                 try:
-                    # Ouve (bloqueante por padrão, mas estamos em thread)
+                    # Ouve (bloqueante com timeout para não travar a thread para sempre)
                     print("[AUDIÇÃO] Ouvindo...")
-                    audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
+                    # timeout=None significa que espera indefinidamente por uma fala
+                    # phrase_time_limit=10 corta se a pessoa falar por mais de 10s
+                    audio = self.recognizer.listen(source, timeout=None, phrase_time_limit=10)
                     
-                    # Transcreve (Google é rápido e grátis para online)
-                    # Se quiser offline, pode mudar para: self.recognizer.recognize_whisper(audio)
+                    # Transcreve
+                    print("[AUDIÇÃO] Processando áudio...")
                     texto = self.recognizer.recognize_google(audio, language="pt-BR")
                     
                     if texto:
                         print(f"[AUDIÇÃO] Ouvi: {texto}")
-                        # MAGIA: Manda o texto para a GUI como se você tivesse digitado
-                        # Isso ativa o Cérebro, salva no histórico e ativa módulos!
+                        
                         if gui:
-                            # Usa o método after para thread-safety na GUI
-                            gui.after(0, lambda t=texto: gui.entry_msg.insert(0, t))
-                            gui.after(100, lambda: gui.send_message_event())
+                            # 1. Mostra o que você falou no chat (Visual)
+                            gui.after(0, lambda t=texto: gui.add_message(t, "VOCÊ"))
+                            
+                            # 2. Manda processar direto (Lógico) - Sem depender do botão enviar
+                            # Injeta diretamente no fluxo de comando do Main
+                            gui.process_in_background(texto)
                             
                 except sr.WaitTimeoutError:
-                    pass # Ninguém falou nada
+                    pass # Silêncio, continua ouvindo
                 except sr.UnknownValueError:
-                    pass # Ruído não identificado
+                    pass # Ruído não identificado, ignora
                 except Exception as e:
                     print(f"[AUDIÇÃO] Erro: {e}")
-                    # Se cair a internet, tenta offline (lógica futura)
+                    self.listening = False # Para em caso de erro crítico (ex: mic desconectado)

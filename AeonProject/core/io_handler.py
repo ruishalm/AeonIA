@@ -26,7 +26,7 @@ class IOHandler:
         os.makedirs(self.temp_audio_path, exist_ok=True)
         
         try: pygame.mixer.init()
-        except: pass
+        except Exception as e: log_display(f"Erro ao inicializar pygame.mixer: {e}")
 
     def _tocar_audio(self, arquivo: str):
         with self.audio_lock: # Só um por vez
@@ -51,13 +51,25 @@ class IOHandler:
         time.sleep(0.5)
         try:
             if os.path.exists(arquivo): os.remove(arquivo)
-        except: pass
+        except Exception as e:
+            log_display(f"Erro ao limpar arquivo de áudio temporário: {e}")
+            log_display(f"Falha ao parar pygame.mixer: {e}")
 
     def falar(self, texto: str):
         if not texto: return
         self.parar_fala = False
+        
+        # Se o texto for muito longo, fala só a primeira linha.
+        if len(texto) > 200:
+            texto = texto.split('\n')[0]
+
         clean_text = re.sub(r'[*_#`]', '', texto).replace('\n', ' ').strip()
-        temp_file = os.path.join(self.temp_audio_path, f"fala_{random.randint(1000, 9999)}.wav")
+        
+        # Se o texto limpo for vazio (ex: primeira linha era só markdown), não faz nada.
+        if not clean_text:
+            return
+            
+        temp_file = os.path.join(self.temp_audio_path, f"fala_{random.randint(1000, 9999)}.mp3")
 
         try:
             async def save_edge_tts():
@@ -67,7 +79,8 @@ class IOHandler:
             asyncio.run(save_edge_tts())
             self._tocar_audio(temp_file)
             return
-        except: pass
+        except Exception as e:
+            log_display(f"Falha no edge-tts: {e}")
 
         if self.installer and self.installer.verificar_piper():
             try:
@@ -75,7 +88,8 @@ class IOHandler:
                 subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 self._tocar_audio(temp_file)
                 return
-            except: pass
+            except Exception as e:
+                log_display(f"Falha no Piper: {e}")
 
         try:
             with self.audio_lock:
@@ -83,11 +97,13 @@ class IOHandler:
                 engine.say(clean_text)
                 engine.runAndWait()
                 engine.stop()
-        except: pass
+        except Exception as e:
+            log_display(f"Falha no pyttsx3: {e}")
 
     def calar_boca(self):
         self.parar_fala = True
         try:
             with self.audio_lock:
                 if pygame.mixer.get_init(): pygame.mixer.music.stop()
-        except: pass
+        except Exception as e:
+            log_display(f"Falha ao parar pygame.mixer: {e}")
