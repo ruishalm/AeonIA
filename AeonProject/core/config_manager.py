@@ -1,13 +1,24 @@
 import json
 from pathlib import Path
+import os
 
 class ConfigManager:
     """
     Gerencia o carregamento e salvamento de todos os arquivos de configuração
     e dados persistentes do Aeon, como sistema, tarefas e memória.
     """
-    def __init__(self, storage_path="AeonProject/bagagem"):
-        self.storage_path = Path(storage_path)
+    def __init__(self, storage_path=None):
+        if storage_path:
+            self.storage_path = Path(storage_path)
+        else:
+            # Constrói o caminho para a pasta 'bagagem' a partir da localização deste arquivo.
+            # __file__ -> .../AeonProject/core/config_manager.py
+            # parent -> .../AeonProject/core/
+            # parent -> .../AeonProject/
+            # 'bagagem' -> .../AeonProject/bagagem/
+            base_path = Path(__file__).parent.parent
+            self.storage_path = base_path / "bagagem"
+
         self.storage_path.mkdir(parents=True, exist_ok=True)
         
         self.sys_path = self.storage_path / "system.json"
