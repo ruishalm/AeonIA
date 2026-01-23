@@ -32,10 +32,10 @@ if not exist "%PYTHON_EXE%" (
     echo %PYTHON_EXE%
     echo.
     echo ESTRUTURA NECESSARIA NO PENDRIVE:
-    echo   [Raiz]\AeonProject\  (Esta pasta)
-    echo   [Raiz]\Python\       (Copie a pasta do python do WinPython para ca)
-    echo   [Raiz]\Ollama\       (Copie ollama.exe para ca)
-    echo   [Raiz]\VSCode\       (Opcional: VS Code Portatil)
+    echo   [Raiz]\AeonProject\  ^(Esta pasta^)
+    echo   [Raiz]\Python\       ^(Copie a pasta do python do WinPython para ca^)
+    echo   [Raiz]\Ollama\       ^(Copie ollama.exe para ca^)
+    echo   [Raiz]\VSCode\       ^(Opcional: VS Code Portatil^)
     echo.
     pause
     exit

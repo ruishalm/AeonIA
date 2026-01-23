@@ -21,7 +21,7 @@ if not exist "%PYTHON_EXE%" (
     echo "%PYTHON_EXE%"
     echo.
     echo Certifique-se de que extraiu o WinPython e renomeou a pasta
-    echo interna (que contem python.exe) para 'Python' na raiz do pendrive.
+    echo interna ^(que contem python.exe^) para 'Python' na raiz do pendrive.
     pause
     exit /b
 )
@@ -36,10 +36,20 @@ if not exist "%AEON_DIR%requirements.txt" (
 
 echo [INFO] Usando Python em: "%PYTHON_EXE%"
 
-:: 3. Verifica e Instala PIP se necessario
-echo [INFO] Verificando PIP...
-"%PYTHON_EXE%" -m pip --version >nul 2>&1
+:: Teste de sanidade do Python
+"%PYTHON_EXE%" -c "print('Python OK')" >nul 2>&1
 if %errorlevel% neq 0 (
+    color 0C
+    echo [ERRO] O Python nao esta respondendo. Verifique se copiou a pasta inteira do WinPython.
+    pause
+    exit /b
+)
+
+:: 3. Verifica e Instala PIP se necessario
+echo [INFO] Verificando PIP (Isso pode demorar no USB)...
+"%PYTHON_EXE%" -m pip --version
+if %errorlevel% neq 0 (
+    echo.
     echo [AVISO] PIP nao encontrado. Tentando ativar via ensurepip...
     "%PYTHON_EXE%" -m ensurepip --default-pip
     if %errorlevel% neq 0 (
@@ -48,7 +58,7 @@ if %errorlevel% neq 0 (
         echo Se voce baixou o 'Python Embeddable' em vez do WinPython:
         echo 1. Abra a pasta Python no pendrive.
         echo 2. Abra o arquivo pythonXX._pth num editor de texto.
-        echo 3. Descomente (remova o #) da linha 'import site'.
+        echo 3. Descomente ^(remova o #^) da linha 'import site'.
         echo 4. Tente rodar este script novamente.
         pause
         exit /b
