@@ -1,5 +1,6 @@
 import subprocess
 import webbrowser
+import shutil
 import threading
 from typing import List, Dict
 from modules.base_module import AeonModule
@@ -17,7 +18,8 @@ class ControleModule(AeonModule):
         self.triggers = [
             "conectar", "online", "reconectar",
             "instalar offline", "baixar modelos", "instalar ollama",
-            "calibrar microfone", "ajustar áudio", "recalibrar"
+            "calibrar microfone", "ajustar áudio", "recalibrar",
+            "diagnóstico", "diagnostico", "verificar módulos", "verificar modulos"
         ]
 
     @property
@@ -74,8 +76,11 @@ class ControleModule(AeonModule):
         if "calibrar microfone" in command or "ajustar áudio" in command or "recalibrar" in command:
             io_handler = self.core_context.get("io_handler")
             if io_handler:
-                msg = "Entendido. Silêncio por 3 segundos para recalibração."
-                io_handler.recalibrar_mic()
+                if hasattr(io_handler, "recalibrar_mic"):
+                    io_handler.recalibrar_mic()
+                    msg = "Entendido. Silêncio por 3 segundos para recalibração."
+                else:
+                    msg = "A recalibração de microfone não está disponível neste núcleo de áudio."
                 return msg
             return "IO Handler não encontrado."
 
@@ -83,13 +88,13 @@ class ControleModule(AeonModule):
 
     def instalar_offline(self) -> str:
         """Instala Ollama e baixa modelos de forma offline em thread separada."""
-        installer = self.core_context.get("installer")
         brain = self.core_context.get("brain")
         io_handler = self.core_context.get("io_handler")
         status_manager = self.core_context.get("status_manager")
 
         def install_thread():
-            if not installer.verificar_ollama():
+            # Verifica se o Ollama existe no PATH
+            if not shutil.which("ollama"):
                 if io_handler:
                     io_handler.falar("Ollama não encontrado. Tentando instalar...")
                 

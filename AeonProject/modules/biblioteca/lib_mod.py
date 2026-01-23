@@ -33,15 +33,16 @@ class BibliotecaModule(AeonModule):
     def metadata(self) -> Dict[str, str]:
         """Metadados do módulo."""
         return {
-            "version": "2.0.0",
+            "version": "2.1.0",
             "author": "Aeon Core",
-            "description": "Gerencia biblioteca digital de livros com download e leitura"
+            "description": "Gerencia biblioteca digital e fornece acesso a textos para outros módulos."
         }
 
     def on_load(self) -> bool:
         """Inicializa o módulo - cria diretório de livros."""
         try:
             os.makedirs(self.books_path, exist_ok=True)
+            self._update_context()
             return True
         except Exception as e:
             print(f"[BibliotecaModule] Erro ao carregar: {e}")
@@ -55,6 +56,40 @@ class BibliotecaModule(AeonModule):
         """Função executada em uma thread para não bloquear a UI."""
         resultado = self.baixar_livro(titulo)
         io_handler.falar(resultado)
+
+    def _update_context(self):
+        """Atualiza o contexto compartilhado com o índice da biblioteca."""
+        ctx = self.core_context.get("context")
+        if ctx:
+            ctx.set("library_books", self.get_available_books())
+
+    def get_available_books(self) -> List[str]:
+        """Retorna lista de livros disponíveis (API pública para outros módulos)."""
+        try:
+            if not os.path.exists(self.books_path): return []
+            return [f.replace('.txt', '') for f in os.listdir(self.books_path) if f.endswith(".txt")]
+        except: return []
+
+    def get_book_content(self, title: str) -> str:
+        """Retorna o conteúdo completo de um livro (API pública para outros módulos)."""
+        try:
+            # Busca flexível pelo arquivo
+            target = None
+            title_clean = re.sub(r'[\\/*?:"<>|]', "", title).lower()
+            
+            for f in os.listdir(self.books_path):
+                if f.lower().endswith(".txt"):
+                    fname = f.replace('.txt', '').lower()
+                    if title_clean == fname or title_clean in fname:
+                        target = os.path.join(self.books_path, f)
+                        break
+            
+            if target and os.path.exists(target):
+                with open(target, 'r', encoding='utf-8') as f:
+                    return f.read()
+            return None
+        except Exception:
+            return None
 
     def process(self, command: str) -> str:
         io_handler = self.core_context.get("io_handler")
@@ -97,6 +132,7 @@ class BibliotecaModule(AeonModule):
                 return f"O livro '{titulo}' já existe na sua biblioteca."
             else:
                 open(file_path, 'w', encoding='utf-8').close() # Cria arquivo vazio
+                self._update_context()
                 return f"Criei o livro em branco '{titulo}' na sua biblioteca."
         except Exception as e:
             return f"Não consegui criar o livro. Erro: {e}"
@@ -152,6 +188,7 @@ class BibliotecaModule(AeonModule):
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(book_content)
                 
+            self._update_context()
             return f"O livro '{titulo}' foi baixado e salvo na sua biblioteca."
 
         except Exception as e:

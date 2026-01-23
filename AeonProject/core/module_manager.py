@@ -31,7 +31,8 @@ class ModuleManager:
 
     def load_modules(self):
         """Escaneia /modules e carrega tudo."""
-        modules_dir = Path(__file__).parent.parent / "modules"
+        # CORREÇÃO: Usa resolve() para caminho absoluto
+        modules_dir = Path(__file__).resolve().parent.parent / "modules"
         log_display(f"Carregando módulos de: {modules_dir}")
 
         for item in modules_dir.iterdir():

@@ -78,10 +78,14 @@ class ContextManager:
         with self._lock:
             return self.data.copy()
 
-    def save_snapshot(self, path="AeonProject/bagagem/memory_dump.json"):
+    def save_snapshot(self, path=None):
         """Salva o estado atual em JSON para persistência entre reboots."""
         self.cleanup()
-        filepath = Path(path)
+        
+        if path:
+            filepath = Path(path)
+        else:
+            filepath = Path(__file__).resolve().parent.parent / "bagagem" / "memory_dump.json"
         
         with self._lock:
             # Filtra apenas dados serializáveis
@@ -99,9 +103,13 @@ class ContextManager:
             print(f"[CONTEXT] Erro ao salvar snapshot: {e}")
             return False
 
-    def load_snapshot(self, path="AeonProject/bagagem/memory_dump.json"):
+    def load_snapshot(self, path=None):
         """Carrega estado anterior do JSON."""
-        filepath = Path(path)
+        if path:
+            filepath = Path(path)
+        else:
+            filepath = Path(__file__).resolve().parent.parent / "bagagem" / "memory_dump.json"
+
         if not filepath.exists():
             return False
             

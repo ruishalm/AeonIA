@@ -16,10 +16,12 @@ class ConfigManager:
             # parent -> .../AeonProject/core/
             # parent -> .../AeonProject/
             # 'bagagem' -> .../AeonProject/bagagem/
-            base_path = Path(__file__).parent.parent
+            base_path = Path(__file__).resolve().parent.parent
             self.storage_path = base_path / "bagagem"
 
         self.storage_path.mkdir(parents=True, exist_ok=True)
+        
+        print(f"[CONFIG] Pasta de dados (Bagagem): {self.storage_path}")
         
         self.sys_path = self.storage_path / "system.json"
         self.tasks_path = self.storage_path / "tasks.json"
@@ -27,6 +29,17 @@ class ConfigManager:
         self.history_path = self.storage_path / "historico.json"
 
         self.system_data = self._load_json(self.sys_path, default={"apps": {}, "routines": {}, "triggers": [], "themes": {}})
+        
+        # Se o arquivo não existir ou não tiver a chave, cria/avisa
+        if not self.sys_path.exists() or "GROQ_KEY" not in self.system_data:
+            print(f"\n{'='*60}")
+            print(f"[CONFIG] ARQUIVO DE SISTEMA CRIADO/CARREGADO EM:\n   {self.sys_path}")
+            print(f"[CONFIG] >> COLOQUE SUA GROQ_KEY DENTRO DESTE ARQUIVO! <<")
+            print(f"{'='*60}\n")
+            if not self.sys_path.exists():
+                self.system_data["GROQ_KEY"] = ""
+                self._save_json(self.sys_path, self.system_data)
+
         self.tasks = self._load_json(self.tasks_path, default=[])
         self.memory = self._load_json(self.mem_path, default=[])
         self.history = self._load_json(self.history_path, default={"conversations": [], "last_context": ""})

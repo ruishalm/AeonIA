@@ -18,7 +18,9 @@ class DevFactory(AeonModule):
         self.triggers = [
             "crie um site", "crie um script", "crie um projeto", 
             "gere um código", "construa um app", "crie uma calculadora",
-            "faça um html", "crie uma api", "programar"
+            "faça um html", "crie uma api", "programar",
+            "dev factory", "devfactory", "desenvolvimento", "fábrica de software", "criar modulo",
+            "criar software", "codar", "programação", "desenvolver", "dev"
         ]
         self.dependencies = ["brain"]
         
@@ -52,6 +54,11 @@ class DevFactory(AeonModule):
             "script": [
                 {"key": "linguagem", "pergunta": "Qual a linguagem do script?"},
                 {"key": "requisitos", "pergunta": "O que o script deve fazer?"},
+            ],
+            "modulo": [
+                {"key": "nome_modulo", "pergunta": "Qual será o nome do módulo?"},
+                {"key": "triggers", "pergunta": "Quais serão os gatilhos (palavras-chave)?"},
+                {"key": "requisitos", "pergunta": "Descreva a funcionalidade e lógica do módulo."},
             ],
             "default": [
                 {"key": "linguagem", "pergunta": "Qual a linguagem principal?"},
@@ -169,9 +176,36 @@ class DevFactory(AeonModule):
         
         gui.after(0, lambda: gui.add_message(f"**Plano:**\n{initial_plan}", "DevFactory"))
         if io_handler: io_handler.falar("Plano criado. Verifique a interface.")
+        if io_handler: io_handler.falar("Gerando arquivos do projeto...")
         
-        gui.after(1, lambda: gui.add_message(f"Modo agente em desenvolvimento.", "DevFactory"))
-        gui.after(5, lambda: gui.refresh_workspace_view())
+        # 2. Geração de Código e Arquivos
+        code_prompt = f"""
+        Com base no plano acima, gere o CÓDIGO COMPLETO para todos os arquivos necessários.
+        
+        DIRETRIZES ANTI-ALUCINAÇÃO:
+        1. Use apenas bibliotecas padrão ou reais e compatíveis.
+        2. Não invente importações que não existem.
+        3. Garanta que o código seja funcional e completo.
+
+        IMPORTANTE: Para que eu possa criar os arquivos, use EXATAMENTE este formato para CADA arquivo:
+        
+        FILENAME: nome_do_arquivo.ext
+        ```linguagem
+        conteudo do codigo aqui
+        ```
+        
+        Não omita nenhum arquivo.
+        """
+        
+        full_response = brain.pensar(prompt=code_prompt, historico_txt=f"Plano Aprovado:\n{initial_plan}", user_prefs={})
+        gui.after(0, lambda: gui.add_message(f"**Código Gerado:**\n{full_response}", "DevFactory"))
+        
+        # 3. Parse e Criação Física
+        created_files = self._parse_and_save_files(full_response)
+        
+        msg = f"Arquivos criados no Workspace: {', '.join(created_files)}" if created_files else "Não consegui identificar arquivos para salvar automaticamente."
+        gui.after(0, lambda: gui.add_message(msg, "DevFactory"))
+        gui.after(1000, lambda: gui.refresh_workspace_view())
 
     def _parse_command(self, command: str) -> tuple:
         cmd_lower = command.lower()
@@ -187,6 +221,8 @@ class DevFactory(AeonModule):
             project_type = "api"
         elif any(keyword in cmd_lower for keyword in ["app", "aplicacao", "aplicativo"]):
             project_type = "app"
+        elif any(keyword in cmd_lower for keyword in ["modulo", "módulo", "plugin"]):
+            project_type = "modulo"
         else:
             project_type = None
         
@@ -216,3 +252,30 @@ class DevFactory(AeonModule):
             print(f"[DevFactory] Erro de decodificação de JSON: {e}")
             print(f"[DevFactory] Resposta recebida que causou o erro: {text[:500]}...")
         return None
+
+    def _parse_and_save_files(self, text: str) -> list:
+        created = []
+        # Divide o texto por "FILENAME:" para encontrar cada arquivo
+        parts = text.split("FILENAME:")
+        
+        # Pula a primeira parte (texto introdutório)
+        for part in parts[1:]:
+            lines = part.strip().split('\n')
+            if not lines: continue
+            
+            filename = lines[0].strip()
+            # Busca o bloco de código (``` ... ```)
+            code_match = re.search(r"```(?:\w*)\n(.*?)```", part, re.DOTALL)
+            
+            if code_match:
+                content = code_match.group(1)
+                safe_filename = os.path.basename(filename) # Segurança básica
+                filepath = os.path.join(self.workspace_dir, safe_filename)
+                try:
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    created.append(safe_filename)
+                except Exception as e:
+                    print(f"[DevFactory] Erro ao salvar {safe_filename}: {e}")
+                    
+        return created

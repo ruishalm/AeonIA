@@ -2,6 +2,7 @@ import pyautogui
 import pygetwindow as gw
 import os
 import time
+import threading
 from typing import List, Dict
 from modules.base_module import AeonModule
 

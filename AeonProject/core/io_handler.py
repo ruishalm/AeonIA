@@ -22,7 +22,9 @@ class IOHandler:
         self.parar_fala = False
         self.audio_lock = threading.Lock() # <--- A PROTEÇÃO V80
         
-        self.temp_audio_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bagagem", "temp")
+        # CORREÇÃO: Usa abspath para garantir que a pasta bagagem seja a real, não uma fantasma
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.temp_audio_path = os.path.join(base_path, "bagagem", "temp")
         os.makedirs(self.temp_audio_path, exist_ok=True)
         
         try: pygame.mixer.init()
@@ -48,7 +50,12 @@ class IOHandler:
         threading.Thread(target=self._limpar_seguro, args=(arquivo,), daemon=True).start()
 
     def _limpar_seguro(self, arquivo: str):
-        time.sleep(0.5)
+        # Solta o arquivo do mixer para o Windows permitir deletar
+        try:
+            pygame.mixer.music.unload()
+        except: pass
+        
+        time.sleep(0.5) # Margem de segurança
         try:
             if os.path.exists(arquivo): os.remove(arquivo)
         except Exception as e:
