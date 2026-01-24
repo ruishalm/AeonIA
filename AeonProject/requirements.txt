@@ -12,3 +12,6 @@ pyautogui
 pillow
 psutil
 pyttsx3
+PyQt6
+pywin32
+pynput

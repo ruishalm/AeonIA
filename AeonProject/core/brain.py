@@ -106,7 +106,7 @@ class Brain:
                 log_display(f"Falha ao conectar na Nuvem: {e}")
             return False
 
-    def pensar(self, prompt: str, historico_txt: str = "", user_prefs: dict = {}, system_override: str = None) -> str:
+    def pensar(self, prompt: str, historico_txt: str = "", user_prefs: dict = {}, system_override: str = None, capabilities: str = "") -> str:
         """
         Processa um prompt com Auto-Healing de conexão.
         """
@@ -121,10 +121,14 @@ class Brain:
             
             system_prompt = f"""Você é Aeon, um assistente focado em respostas precisas e factuais.
 Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}
-Responda SEMPRE em Português do Brasil, de forma concisa.
+Responda SEMPRE em Português do Brasil, de forma concisa e prestativa.
 Se você não souber uma informação, admita. Não invente dados.
 
-CONTEXTO DE CONVERSAS ANTERIORES:
+CAPACIDADES DO SISTEMA:
+Você está integrado a um sistema operacional. Se o usuário pedir para criar arquivos, controlar mídia ou sistema, saiba que você PODE fazer isso através dos seus módulos.
+{capabilities}
+
+HISTÓRICO RECENTE:
 {historico_txt}
 
 Preferências do usuário:

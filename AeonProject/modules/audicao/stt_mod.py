@@ -10,6 +10,10 @@ class STTModule(AeonModule):
         self.dependencies = ["gui", "io_handler"]
         
         self.recognizer = sr.Recognizer()
+        # Define o piso da sensibilidade em 300, mas mantém o ajuste dinâmico ativo
+        self.recognizer.energy_threshold = 300 
+        self.recognizer.dynamic_energy_threshold = True
+        self.recognizer.dynamic_energy_ratio = 1.5
         self.listening = False
         self.thread = None
 
@@ -31,15 +35,22 @@ class STTModule(AeonModule):
     def _listen_loop(self):
         """Loop infinito que ouve, transcreve e injeta no sistema."""
         gui = self.core_context.get("gui")
+        context = self.core_context.get("context")
         
         with sr.Microphone() as source:
             # Calibragem rápida de ruído (Apenas visual)
             if gui: gui.after(0, lambda: gui.add_message("Calibrando ruído...", "AUDIÇÃO"))
             self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            
             if gui: gui.after(0, lambda: gui.add_message("Escuta Ativa. Fale algo...", "AUDIÇÃO"))
+            if context: context.set("mic_active", True)
             
             while self.listening:
                 try:
+                    # Garante que, mesmo com ajuste dinâmico, o filtro nunca caia abaixo de 300
+                    if self.recognizer.energy_threshold < 300:
+                        self.recognizer.energy_threshold = 300
+
                     # Ouve (bloqueante com timeout para não travar a thread para sempre)
                     print("[AUDIÇÃO] Ouvindo...")
                     # timeout=None significa que espera indefinidamente por uma fala

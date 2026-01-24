@@ -36,20 +36,10 @@ if not exist "%AEON_DIR%requirements.txt" (
 
 echo [INFO] Usando Python em: "%PYTHON_EXE%"
 
-:: Teste de sanidade do Python
-"%PYTHON_EXE%" -c "print('Python OK')" >nul 2>&1
-if %errorlevel% neq 0 (
-    color 0C
-    echo [ERRO] O Python nao esta respondendo. Verifique se copiou a pasta inteira do WinPython.
-    pause
-    exit /b
-)
-
 :: 3. Verifica e Instala PIP se necessario
-echo [INFO] Verificando PIP (Isso pode demorar no USB)...
-"%PYTHON_EXE%" -m pip --version
+echo [INFO] Verificando PIP...
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
     echo [AVISO] PIP nao encontrado. Tentando ativar via ensurepip...
     "%PYTHON_EXE%" -m ensurepip --default-pip
     if %errorlevel% neq 0 (

@@ -47,11 +47,17 @@ set "OLLAMA_MODELS=%OLLAMA_MODELS%"
 
 :: 3. Inicia o Servidor Ollama (Cerebro Local) apontando para o USB
 if exist "%OLLAMA_EXE%" (
-    echo [BOOT] Iniciando Servidor Ollama...
-    :: Cria a pasta de modelos se nao existir
-    if not exist "%OLLAMA_MODELS%" mkdir "%OLLAMA_MODELS%"
-    :: Inicia em background
-    start "Ollama Server USB" /B "%OLLAMA_EXE%" serve
+    :: Verifica se a porta 11434 ja esta ocupada
+    netstat -ano | findstr :11434 >nul
+    if %errorlevel% equ 0 (
+        echo [BOOT] Ollama ja esta em execucao.
+    ) else (
+        echo [BOOT] Iniciando Servidor Ollama...
+        :: Cria a pasta de modelos se nao existir
+        if not exist "%OLLAMA_MODELS%" mkdir "%OLLAMA_MODELS%"
+        :: Inicia em background
+        start "Ollama Server USB" /B "%OLLAMA_EXE%" serve
+    )
 ) else (
     echo [AVISO] Ollama nao encontrado. Modo offline indisponivel.
 )

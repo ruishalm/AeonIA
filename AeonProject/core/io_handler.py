@@ -66,8 +66,8 @@ class IOHandler:
         if not texto: return
         self.parar_fala = False
         
-        # Se o texto for muito longo, fala só a primeira linha.
-        if len(texto) > 200:
+        # Aumentado limite para permitir explicações mais completas
+        if len(texto) > 1000:
             texto = texto.split('\n')[0]
 
         clean_text = re.sub(r'[*_#`]', '', texto).replace('\n', ' ').strip()
@@ -80,6 +80,7 @@ class IOHandler:
 
         try:
             async def save_edge_tts():
+                log_display(f"Tentando Edge-TTS para: {clean_text[:30]}...")
                 voz = self.config.get("VOICE", "pt-BR-AntonioNeural")
                 com = edge_tts.Communicate(clean_text, voz)
                 await com.save(temp_file)
@@ -87,7 +88,7 @@ class IOHandler:
             self._tocar_audio(temp_file)
             return
         except Exception as e:
-            log_display(f"Falha no edge-tts: {e}")
+            log_display(f"Falha no edge-tts (Sem internet?): {e}")
 
         if self.installer and self.installer.verificar_piper():
             try:
@@ -114,3 +115,10 @@ class IOHandler:
                 if pygame.mixer.get_init(): pygame.mixer.music.stop()
         except Exception as e:
             log_display(f"Falha ao parar pygame.mixer: {e}")
+
+    def is_busy(self):
+        """Retorna True se estiver reproduzindo áudio."""
+        try:
+            return pygame.mixer.music.get_busy()
+        except:
+            return False

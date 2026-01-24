@@ -5,6 +5,7 @@ import json
 import subprocess
 import threading
 import re
+import shutil
 from datetime import datetime
 from modules.base_module import AeonModule
 
@@ -20,11 +21,14 @@ class DevFactory(AeonModule):
             "gere um código", "construa um app", "crie uma calculadora",
             "faça um html", "crie uma api", "programar",
             "dev factory", "devfactory", "desenvolvimento", "fábrica de software", "criar modulo",
-            "criar software", "codar", "programação", "desenvolver", "dev"
+            "criar software", "codar", "programação", "desenvolver", "dev",
+            "limpar workspace", "limpar projetos", "apagar arquivos", "resetar workspace",
+            "limpar cache", "limpar temp", "limpar sistema", "otimizar sistema"
         ]
         self.dependencies = ["brain"]
         
-        self.workspace_dir = os.path.join("AeonProject", "workspace")
+        # Usa o caminho absoluto definido no main.py (via contexto) para sincronizar com a GUI
+        self.workspace_dir = core_context.get("workspace", os.path.join("workspace"))
         os.makedirs(self.workspace_dir, exist_ok=True)
         
         self.projects_log = os.path.join(self.workspace_dir, "projects.json")
@@ -130,12 +134,84 @@ class DevFactory(AeonModule):
                 self.current_question_key = None
                 return self._start_agentic_creation()
         else:
+            # Verifica comandos de limpeza
+            if any(k in command.lower() for k in ["limpar workspace", "limpar projetos", "apagar arquivos", "resetar workspace"]):
+                return self._clean_workspace()
+
+            # Verifica limpeza de sistema (cache/temp)
+            if any(k in command.lower() for k in ["limpar cache", "limpar temp", "limpar sistema", "otimizar sistema"]):
+                return self._clean_system_temp()
+
             project_type, requirements = self._parse_command(command)
-            if not project_type or not requirements or len(requirements) < 5:
+            
+            # Lógica para evitar o "atropelamento":
+            # Se o comando for apenas um gatilho de ativação (ex: "iniciar devfactory") 
+            # sem instruções reais do que fazer, forçamos a entrevista.
+            is_just_activation = len(command.split()) < 5 or requirements == command
+            
+            if not project_type or not requirements or len(requirements) < 10 or is_just_activation:
                 return self._start_interview(initial_prompt=command)
             else:
                 self.gathered_requirements = {"tipo_projeto": project_type, "requisitos": requirements, "linguagem": "não especificada"}
                 return self._start_agentic_creation()
+
+    def _clean_workspace(self) -> str:
+        """Remove todos os arquivos do workspace, exceto o log de projetos."""
+        deleted_count = 0
+        try:
+            for item in os.listdir(self.workspace_dir):
+                item_path = os.path.join(self.workspace_dir, item)
+                # Mantém o log de projetos, apaga o resto
+                if item != "projects.json":
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                        deleted_count += 1
+                    elif os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                        deleted_count += 1
+            
+            # Atualiza a GUI se disponível para refletir a limpeza
+            gui = self.core_context.get("gui")
+            if gui:
+                gui.after(0, lambda: gui.refresh_workspace_view())
+
+            return f"Workspace limpo. {deleted_count} itens removidos. (O histórico 'projects.json' foi mantido)."
+        except Exception as e:
+            return f"Erro ao limpar workspace: {e}"
+
+    def _clean_system_temp(self) -> str:
+        """Limpa arquivos temporários do sistema (áudio cache, pycache)."""
+        # O workspace está na raiz do projeto, então subimos um nível para achar a raiz
+        root_dir = os.path.dirname(self.workspace_dir)
+        
+        # 1. Define caminho dos áudios temporários
+        audio_temp = os.path.join(root_dir, "bagagem", "temp")
+        
+        deleted_files = 0
+        deleted_dirs = 0
+        
+        # 2. Limpa Cache de Áudio (bagagem/temp)
+        if os.path.exists(audio_temp):
+            for f in os.listdir(audio_temp):
+                fp = os.path.join(audio_temp, f)
+                try:
+                    if os.path.isfile(fp):
+                        os.remove(fp)
+                        deleted_files += 1
+                except Exception: pass
+
+        # 3. Limpa __pycache__ (Recursivo em todo o projeto)
+        for root, dirs, files in os.walk(root_dir):
+            for d in list(dirs): # list() cria uma cópia para podermos modificar a original
+                if d == "__pycache__":
+                    dp = os.path.join(root, d)
+                    try:
+                        shutil.rmtree(dp)
+                        deleted_dirs += 1
+                        dirs.remove(d) # Não precisa entrar na pasta que acabamos de apagar
+                    except Exception: pass
+        
+        return f"Sistema otimizado. {deleted_files} arquivos de áudio e {deleted_dirs} pastas de cache removidos."
 
     def _start_agentic_creation(self) -> str:
         """Inicia o processo de criação agente."""
@@ -151,17 +227,19 @@ class DevFactory(AeonModule):
         """
         
         self.is_interviewing = False
+        # Salva copia dos dados para o log antes de limpar
+        project_data = self.gathered_requirements.copy()
         self.gathered_requirements = {}
 
         threading.Thread(
             target=self._agent_loop,
-            args=(final_objective,),
+            args=(final_objective, project_data),
             daemon=True
         ).start()
 
         return f"Ok. Iniciando criação. Acompanhe."
 
-    def _agent_loop(self, objective: str):
+    def _agent_loop(self, objective: str, project_data: dict = None):
         """O loop principal do agente de desenvolvimento."""
         io_handler = self.core_context.get("io_handler")
         brain = self.core_context.get("brain")
@@ -202,6 +280,16 @@ class DevFactory(AeonModule):
         
         # 3. Parse e Criação Física
         created_files = self._parse_and_save_files(full_response)
+        
+        # 4. Registra no Histórico (projects.json)
+        if created_files:
+            self.projects.append({
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "type": project_data.get("tipo_projeto", "geral") if project_data else "geral",
+                "files": created_files,
+                "summary": project_data.get("requisitos", "")[:100] if project_data else "Sem descrição"
+            })
+            self._save_projects_log()
         
         msg = f"Arquivos criados no Workspace: {', '.join(created_files)}" if created_files else "Não consegui identificar arquivos para salvar automaticamente."
         gui.after(0, lambda: gui.add_message(msg, "DevFactory"))
@@ -263,9 +351,12 @@ class DevFactory(AeonModule):
             lines = part.strip().split('\n')
             if not lines: continue
             
-            filename = lines[0].strip()
+            # Limpa o nome do arquivo de possíveis marcações de markdown (como ** ou `)
+            filename = re.sub(r'[*`#]', '', lines[0]).strip()
+            
             # Busca o bloco de código (``` ... ```)
-            code_match = re.search(r"```(?:\w*)\n(.*?)```", part, re.DOTALL)
+            # Regex ajustado: aceita qualquer coisa (ou nada) depois dos crases iniciais até a quebra de linha
+            code_match = re.search(r"```.*?\n(.*?)```", part, re.DOTALL)
             
             if code_match:
                 content = code_match.group(1)

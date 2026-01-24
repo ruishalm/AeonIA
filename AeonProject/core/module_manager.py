@@ -94,6 +94,14 @@ class ModuleManager:
                 history_text += f"{role}: {msg['content']}\n"
             return history_text
 
+    def get_capabilities_summary(self) -> str:
+        """Retorna uma lista de todos os módulos e o que eles fazem para o Brain."""
+        summary = "Você tem acesso aos seguintes módulos técnicos:\n"
+        for mod in self.modules:
+            desc = getattr(mod, 'metadata', {}).get('description', 'Sem descrição.')
+            summary += f"- {mod.name}: {desc} (Gatilhos: {', '.join(mod.triggers[:5])})\n"
+        return summary
+
     def route_command(self, command: str) -> str:
         """Roteia comando com PRIORIDADE DE TAMANHO."""
         command_lower = command.lower()
@@ -123,7 +131,8 @@ class ModuleManager:
             brain = self.core_context.get("brain")
             if brain:
                 hist = self._format_history()
-                response = brain.pensar(prompt=command, historico_txt=hist, user_prefs={})
+                caps = self.get_capabilities_summary()
+                response = brain.pensar(prompt=command, historico_txt=hist, system_override=None, capabilities=caps)
             else:
                 response = "Cérebro indisponível."
 
