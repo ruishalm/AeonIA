@@ -15,3 +15,4 @@ pyttsx3
 PyQt6
 pywin32
 pynput
+mediapipe

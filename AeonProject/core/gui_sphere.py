@@ -30,6 +30,7 @@ C_PROCESS = QColor(0, 191, 255)    # Deep Sky Blue (Processando)
 C_BG_INPUT = "#000000"             # Preto Absoluto
 C_BORDER = "#8B0000"               # Vermelho Escuro
 C_TEXT = "#FFFFFF"                 # Branco
+C_PASTEL = QColor(200, 150, 150, 40) # Vermelho Pastel Suave para Standby
 C_AURA_ONLINE = QColor(0, 255, 0, 255)  # Verde Sólido (Online)
 C_AURA_OFFLINE = QColor(255, 0, 0, 255) # Vermelho Sólido (Offline)
 
@@ -91,6 +92,13 @@ class AeonSphere(QMainWindow):
         self.orbit_factors = [random.uniform(1.05, 1.15) for _ in range(3)]
         self.is_interactive = False
         self.drag_pos = None
+        self.hidden_mode = False
+        self.ring_angle = 0
+        
+        # --- Lógica de Presença (Wake Word) ---
+        self.visual_mode = "STANDBY" # STANDBY ou ACTIVE
+        self.sleep_timer = QTimer()
+        self.sleep_timer.timeout.connect(self.go_to_sleep)
 
         # Widget Central
         self.central_widget = QWidget()
@@ -140,7 +148,8 @@ class AeonSphere(QMainWindow):
 
         # Inicia oculta (Modo Fantasma)
         self.set_click_through(True)
-        self.after(3000, lambda: threading.Thread(target=self.process_command, args=("ativar escuta", True), daemon=True).start())
+        self.after(3000, lambda: threading.Thread(target=self.process_command, args=("ativar escuta", True), daemon=True).start()) # silent=True mantém standby
+        self.after(4000, lambda: threading.Thread(target=self.process_command, args=("ativar visão", True), daemon=True).start()) # Inicia a visão silenciosamente
 
     def set_click_through(self, enable: bool):
         """Controla se o mouse atravessa a janela ou interage com ela."""
@@ -159,6 +168,7 @@ class AeonSphere(QMainWindow):
             self.input_frame.show()
             self.input_box.setFocus()
             self.is_interactive = True
+            self.hidden_mode = False
         ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
 
     def _setup_global_hotkey(self):
@@ -170,10 +180,14 @@ class AeonSphere(QMainWindow):
 
     def paintEvent(self, event):
         """Desenha a esfera com gradientes e a aura de status."""
+        if self.hidden_mode and not self.is_interactive:
+            return
+            
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        color = C_PROCESS if self.state == "PROCESSING" else C_ACTIVE
+        # Define a cor base: Pastel se estiver em Standby
+        color = C_PASTEL if self.visual_mode == "STANDBY" else (C_PROCESS if self.state == "PROCESSING" else C_ACTIVE)
         center = QPointF(self.width() / 2, 110.0) # Desce um pouco para dar espaço ao texto
 
         # --- DESENHO DAS BOLINHAS ORBITANTES (STATUS ONLINE/OFFLINE) ---
@@ -182,21 +196,23 @@ class AeonSphere(QMainWindow):
 
         painter.setPen(Qt.PenStyle.NoPen)
 
-        for i in range(3): # 3 mini bolinhas orbitando
-            angle = self.orbit_angles[i]
-            orbit_radius = self.current_radius * self.orbit_factors[i]
-            bx = center.x() + orbit_radius * math.cos(angle)
-            by = center.y() + orbit_radius * math.sin(angle)
-            ball_center = QPointF(bx, by)
+        # Só desenha bolinhas e anéis se NÃO estiver em standby
+        if self.visual_mode == "ACTIVE":
+            for i in range(3): # 3 mini bolinhas orbitando
+                angle = self.orbit_angles[i]
+                orbit_radius = self.current_radius * self.orbit_factors[i]
+                bx = center.x() + orbit_radius * math.cos(angle)
+                by = center.y() + orbit_radius * math.sin(angle)
+                ball_center = QPointF(bx, by)
+                
+                ball_grad = QRadialGradient(ball_center, 5)
+                ball_grad.setColorAt(0, QColor(base_aura_color.red(), base_aura_color.green(), base_aura_color.blue(), 100))
+                ball_grad.setColorAt(1, Qt.GlobalColor.transparent)
+                
+                painter.setBrush(QBrush(ball_grad))
+                painter.drawEllipse(ball_center, 5, 5)
             
-            # Gradiente radial para cada bolinha (Efeito 3D e Transparência)
-            # Alpha 100 no centro e 0 na borda para ficar bem "fantasmagórico"
-            ball_grad = QRadialGradient(ball_center, 5)
-            ball_grad.setColorAt(0, QColor(base_aura_color.red(), base_aura_color.green(), base_aura_color.blue(), 100))
-            ball_grad.setColorAt(1, Qt.GlobalColor.transparent)
-            
-            painter.setBrush(QBrush(ball_grad))
-            painter.drawEllipse(ball_center, 5, 5)
+            self._draw_rings(painter, center, color)
         
         # --- DESENHO DA ESFERA ONDULADA E TRANSLÚCIDA ---
         # Camada externa (mais suave)
@@ -208,11 +224,16 @@ class AeonSphere(QMainWindow):
         """Desenha uma forma orgânica ondulada e translúcida."""
         path = QPainterPath()
         num_points = 80
+        
+        # Aumenta a amplitude das ondas se estiver ativo. Em Standby, amp_factor é 0 (sem ondas).
+        is_active = self.io_handler.is_busy() or self.state == "PROCESSING"
+        amp_factor = 3.5 if is_active else (1.0 if self.visual_mode == "ACTIVE" else 0.0)
+
         for i in range(num_points + 1):
             angle = (i * 2 * math.pi) / num_points
             # Ondulações baseadas na fase da animação
-            wave1 = math.sin(angle * 2 + self.pulse_phase * 1.2) * (radius * 0.03)
-            wave2 = math.sin(angle * 5 - self.pulse_phase * 1.5) * (radius * 0.02)
+            wave1 = math.sin(angle * 2 + self.pulse_phase * 1.2) * (radius * 0.03 * amp_factor)
+            wave2 = math.sin(angle * 5 - self.pulse_phase * 1.5) * (radius * 0.02 * amp_factor)
             r = radius + wave1 + wave2
             x = center.x() + r * math.cos(angle)
             y = center.y() + r * math.sin(angle)
@@ -235,20 +256,48 @@ class AeonSphere(QMainWindow):
         painter.setBrush(QBrush(grad))
         painter.drawPath(path)
 
+    def _draw_rings(self, painter, center, color):
+        """Desenha anéis tecnológicos sutis e translúcidos."""
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        
+        # Cor do anel com transparência bem alta (quase invisível)
+        ring_color = QColor(color.red(), color.green(), color.blue(), 40)
+        pen = QPen(ring_color)
+        pen.setWidth(1)
+        painter.setPen(pen)
+        
+        # Salva o estado do painter para rotacionar
+        painter.save()
+        painter.translate(center)
+        painter.rotate(self.ring_angle)
+        
+        # Desenha 2 anéis elípticos cruzados
+        for i in range(2):
+            painter.rotate(45 * i)
+            r_w = self.current_radius * 1.4
+            r_h = self.current_radius * 0.5
+            painter.drawEllipse(QPointF(0, 0), r_w, r_h)
+            
+        painter.restore()
+
     def animate(self):
         """Gerencia as pulsações e vibrações."""
-        # Vibração intensa se estiver processando ou falando
-        if self.io_handler.is_busy() or self.state == "PROCESSING":
-            if self.io_handler.is_busy(): self.state = "SPEAKING"
-            self.target_radius = self.base_radius + random.randint(-3, 7)
-        elif self.state == "SPEAKING" or self.state == "PROCESSING":
-            self.state = "IDLE"
-            self.target_radius = self.base_radius
+        # So vibra se estiver no modo visual ATIVO
+        is_active = (self.io_handler.is_busy() or self.state == "PROCESSING") and self.visual_mode == "ACTIVE"
         
-        # Pulsação suave em repouso
-        if self.state == "IDLE":
-            self.pulse_phase += 0.1
-            self.target_radius = self.base_radius + math.sin(self.pulse_phase) * 2
+        # Incrementa a fase (mais lento em standby para a "respiração")
+        phase_inc = 0.25 if is_active else (0.1 if self.visual_mode == "ACTIVE" else 0.05)
+        self.pulse_phase += phase_inc
+        self.ring_angle += 0.5 # Rotação lenta dos anéis
+
+        if is_active:
+            if self.io_handler.is_busy(): self.state = "SPEAKING"
+            # Vibração errática no tamanho
+            self.target_radius = self.base_radius + random.randint(-4, 8)
+        else:
+            # Pulsação suave senoidal (Respiração)
+            pulse_amp = 2 if self.visual_mode == "ACTIVE" else 4
+            self.target_radius = self.base_radius + math.sin(self.pulse_phase) * pulse_amp
 
         # Atualiza ângulos das órbitas de forma independente e lenta
         for i in range(3):
@@ -282,8 +331,76 @@ class AeonSphere(QMainWindow):
         """Compatibilidade com módulos de áudio."""
         threading.Thread(target=self.process_command, args=(txt,), daemon=True).start()
 
+    def wake_up(self):
+        """Acorda a esfera para o modo ativo."""
+        self.visual_mode = "ACTIVE"
+        self.sleep_timer.stop()
+        self.update()
+
+    def go_to_sleep(self):
+        """Retorna a esfera para o modo standby (respiração)."""
+        self.visual_mode = "STANDBY"
+        self.state = "IDLE"
+        self.update()
+
+    def quit_app(self):
+        """Fecha a aplicação, garantindo que os módulos parem."""
+        print("[GUI] Recebido comando para encerrar. Parando módulos...")
+        # 1. Parar módulos que rodam em threads
+        try:
+            audicao = self.module_manager.get_module("Audicao")
+            if audicao and hasattr(audicao, 'stop'):
+                audicao.stop()
+                print("[GUI] Módulo Audicao parado.")
+
+            gestos = self.module_manager.get_module("Gestos")
+            if gestos and hasattr(gestos, 'stop_vision'):
+                gestos.stop_vision()
+                print("[GUI] Módulo Gestos parado.")
+        except Exception as e:
+            print(f"[GUI][ERRO] Erro ao parar módulos: {e}")
+
+        # 2. Falar e agendar o fechamento
+        self.io_handler.falar("Encerrando.")
+        self.after(1000, QApplication.instance().quit)
+
     def process_command(self, txt, silent=False):
         try:
+            cmd = txt.lower().strip()
+            
+            wake_words = ["aeon", "aion", "iron", "ion", "aon", "eion", "iniciar", "acordar"]
+            
+            # 1. Verifica se é APENAS a palavra de ativação
+            if cmd in wake_words:
+                self.after(0, self.wake_up)
+                self.io_handler.falar("Chamou?")
+                self.after(0, self.sleep_timer.start, 5000) # Volta a dormir em 5s se nada for dito
+                return
+
+            # 2. Verifica se o comando começa com a palavra de ativação (ex: "Aeon, horas")
+            is_wake_call = any(cmd.startswith(w) for w in wake_words)
+            
+            # Se estiver em Standby e não for uma chamada direta ou comando silencioso, ignora
+            if self.visual_mode == "STANDBY" and not is_wake_call and not silent:
+                return
+
+            # Se houver um comando e não for silencioso, cancela o timer de sono e acorda
+            if not silent:
+                self.after(0, self.wake_up)
+                self.after(0, self.sleep_timer.start, 10000) # Volta a dormir após 10s de inatividade
+
+            if cmd in ["ficar invisível", "modo invisível", "sumir", "desativar esfera", "esconder"]:
+                self.hidden_mode = True
+                self.set_click_through(True)
+                self.io_handler.falar("Entendido. Entrando em modo invisível.")
+                return
+            
+            if cmd in ["ficar visível", "modo visível", "aparecer", "ativar esfera", "mostrar"]:
+                self.hidden_mode = False
+                self.io_handler.falar("Modo visível ativado.")
+                self.update()
+                return
+
             if not silent: self.state = "PROCESSING"
             response = self.module_manager.route_command(txt)
             # Muda estado para IDLE antes de falar para permitir animação de fala

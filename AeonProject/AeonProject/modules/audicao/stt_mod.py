@@ -19,7 +19,7 @@ class STTModule(AeonModule):
                 self.listening = True
                 self.thread = threading.Thread(target=self._listen_loop, daemon=True)
                 self.thread.start()
-                return "Microfone ativado. Pode falar continuamente."
+                return "aeon iniciado"
             return "Já estou ouvindo."
         
         if "parar" in command:

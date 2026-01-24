@@ -8,7 +8,7 @@ import datetime
 def log_display(msg):
     print(f"[BRAIN] {msg}")
 
-class Brain:
+class AeonBrain:
     """
     O cérebro do Aeon. Gerencia a interação com os modelos de linguagem.
     """
@@ -106,7 +106,7 @@ class Brain:
                 log_display(f"Falha ao conectar na Nuvem: {e}")
             return False
 
-    def pensar(self, prompt: str, historico_txt: str = "", user_prefs: dict = {}, system_override: str = None, capabilities: str = "") -> str:
+    def pensar(self, prompt: str, historico_txt: str = "", user_prefs: dict = {}, system_override: str = None, capabilities: str = "", long_term_context: str = "") -> str:
         """
         Processa um prompt com Auto-Healing de conexão.
         """
@@ -117,7 +117,7 @@ class Brain:
         if system_override:
             system_prompt = system_override
         else:
-            prefs_str = "\n".join([f"- {k}: {v}" for k, v in user_prefs.items()])
+            prefs_str = "\n".join([f"- {k}: {v}" for k, v in user_prefs.items()]) if user_prefs else "Nenhuma preferência definida."
             
             system_prompt = f"""Você é Aeon, um assistente focado em respostas precisas e factuais.
 Data: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}
@@ -125,8 +125,11 @@ Responda SEMPRE em Português do Brasil, de forma concisa e prestativa.
 Se você não souber uma informação, admita. Não invente dados.
 
 CAPACIDADES DO SISTEMA:
-Você está integrado a um sistema operacional. Se o usuário pedir para criar arquivos, controlar mídia ou sistema, saiba que você PODE fazer isso através dos seus módulos.
+Você possui controle total sobre o hardware (CÂMERA, MICROFONE) e o sistema operacional Windows através de seus módulos técnicos. Se o usuário pedir para ver algo ou ligar a câmera, utilize o módulo de Gestos.
 {capabilities}
+
+MEMÓRIAS RELEVANTES DO PASSADO:
+{"Nenhuma memória relevante encontrada." if not long_term_context else long_term_context}
 
 HISTÓRICO RECENTE:
 {historico_txt}

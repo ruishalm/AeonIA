@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 
 from modules.base_module import AeonModule
+from core.memory_vector import VectorMemory
 
 def log_display(msg):
     print(f"[MOD_MANAGER] {msg}")
@@ -28,6 +29,12 @@ class ModuleManager:
         self.chat_history = []
         self.max_history = 10
         self.history_lock = threading.Lock()
+        
+        # Inicializa Memória Vetorial
+        self.vector_memory = None
+        config_mgr = self.core_context.get("config_manager")
+        if config_mgr:
+            self.vector_memory = VectorMemory(str(config_mgr.storage_path))
 
     def load_modules(self):
         """Escaneia /modules e carrega tudo."""
@@ -38,17 +45,12 @@ class ModuleManager:
         for item in modules_dir.iterdir():
             if item.is_dir() and item.name != "__pycache__":
                 try:
-                    mod_file = next(item.glob("*_mod.py"), None)
-                    if not mod_file:
-                        continue
-
-                    module_name = f"modules.{item.name}.{mod_file.stem}"
-                    self._import_and_register(module_name)
-
+                    for mod_file in item.glob("*_mod.py"):
+                        module_name = f"modules.{item.name}.{mod_file.stem}"
+                        self._import_and_register(module_name)
                 except Exception as e:
                     log_display(f"  ✗ Erro ao carregar '{item.name}': {e}")
-                    self.failed_modules.append({"name": item.name, "error": str(e)})
-        
+
         log_display(f"Módulos carregados: {len(self.modules)}")
 
     def _import_and_register(self, module_name):
@@ -132,7 +134,13 @@ class ModuleManager:
             if brain:
                 hist = self._format_history()
                 caps = self.get_capabilities_summary()
-                response = brain.pensar(prompt=command, historico_txt=hist, system_override=None, capabilities=caps)
+                
+                # Recupera memórias de longo prazo relevantes para a pergunta atual
+                long_term = ""
+                if self.vector_memory:
+                    long_term = self.vector_memory.retrieve_relevant(command)
+                
+                response = brain.pensar(prompt=command, historico_txt=hist, system_override=None, capabilities=caps, long_term_context=long_term)
             else:
                 response = "Cérebro indisponível."
 
@@ -141,6 +149,11 @@ class ModuleManager:
             with self.history_lock:
                 self.chat_history.append({"role": "user", "content": command})
                 self.chat_history.append({"role": "assistant", "content": response})
+                
+                # Salva a interação na memória de longo prazo (apenas se não for comando de módulo)
+                if self.vector_memory and not triggered:
+                    self.vector_memory.store_interaction(command, response)
+                
                 # Garante que a lista não exceda o tamanho máximo
                 history_len = len(self.chat_history)
                 if history_len > self.max_history * 2:
